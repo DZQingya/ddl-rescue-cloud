@@ -1181,6 +1181,25 @@ def run_parse(raw_text: str, *, reset_statuses: bool = False) -> None:
 
 
 active_step = guided_step()
+planned_section = st.session_state.get("guided_section", "急救流程")
+page_signature = f"{planned_section}:{active_step if planned_section == '急救流程' else 'tasks'}"
+if st.session_state.get("last_page_signature") != page_signature:
+    st.session_state.last_page_signature = page_signature
+    st.markdown(
+        """
+<style>
+@keyframes ddlPageEnter {
+  from { opacity: 0; transform: translateY(10px) scale(.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.block-container { animation: ddlPageEnter .28s cubic-bezier(.2,.8,.2,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .block-container { animation: none !important; }
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
 
 st.markdown(
     """
