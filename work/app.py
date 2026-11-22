@@ -1188,48 +1188,74 @@ if st.session_state.get("last_page_signature") != page_signature:
     st.markdown(
         """
 <div class="ddl-transition-overlay" aria-hidden="true">
-  <div class="ddl-transition-mark">DDL 急救站</div>
+  <div class="ddl-light ddl-light-a"></div>
+  <div class="ddl-light ddl-light-b"></div>
+  <div class="ddl-sheen"></div>
+  <div class="ddl-transition-panel">
+    <div class="ddl-emblem">🚑</div>
+    <div class="ddl-brand">DDL 急救站</div>
+    <div class="ddl-sub">把今天，收成一个动作</div>
+    <div class="ddl-progress"><span></span></div>
+  </div>
 </div>
 <style>
-@keyframes ddlTransitionVeil {
-  0% { opacity: 0; transform: translateX(-3%); }
-  18% { opacity: 1; }
-  100% { opacity: 0; transform: translateX(3%); }
+@keyframes ddlVeil {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  72% { opacity: 1; }
+  100% { opacity: 0; }
 }
-@keyframes ddlTransitionMark {
-  0% { opacity: 0; transform: translate(-50%, calc(-50% + 12px)) scale(.96); }
-  22% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  72% { opacity: 1; transform: translate(-50%, calc(-50% - 3px)) scale(1); }
-  100% { opacity: 0; transform: translate(-50%, calc(-50% - 10px)) scale(.98); }
+@keyframes ddlPanelIn {
+  0% { opacity: 0; transform: translate(-50%, calc(-50% + 18px)) scale(.92); }
+  20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  72% { opacity: 1; transform: translate(-50%, calc(-50% - 2px)) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, calc(-50% - 14px)) scale(.98); }
+}
+@keyframes ddlLightA {
+  0% { transform: translate3d(-18%, -12%, 0) scale(.82); }
+  100% { transform: translate3d(16%, 12%, 0) scale(1.18); }
+}
+@keyframes ddlLightB {
+  0% { transform: translate3d(14%, 10%, 0) scale(.88); }
+  100% { transform: translate3d(-16%, -10%, 0) scale(1.22); }
+}
+@keyframes ddlSheen {
+  0% { transform: translateX(-170%) skewX(-18deg); opacity: 0; }
+  24% { opacity: .9; }
+  100% { transform: translateX(240%) skewX(-18deg); opacity: 0; }
+}
+@keyframes ddlEmblem {
+  0% { opacity: 0; transform: scale(.55) rotate(-12deg); }
+  30% { opacity: 1; transform: scale(1.08) rotate(2deg); }
+  58% { transform: scale(1) rotate(0); }
+  100% { transform: scale(1) rotate(0); }
+}
+@keyframes ddlProgressFill {
+  0% { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
 }
 .ddl-transition-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9998;
-  pointer-events: none;
-  overflow: hidden;
-  background: linear-gradient(112deg, rgba(37,99,235,.10), rgba(255,255,255,.74) 42%, rgba(56,189,248,.12));
-  will-change: opacity, transform;
-  animation: ddlTransitionVeil .52s cubic-bezier(.2,.75,.2,1) both;
+  position: fixed; inset: 0; z-index: 9998; pointer-events: none; overflow: hidden;
+  background: linear-gradient(135deg, rgba(219,234,254,.92), rgba(248,250,252,.88) 46%, rgba(224,242,254,.9));
+  will-change: opacity; animation: ddlVeil .78s cubic-bezier(.18,.78,.2,1) both;
 }
-.ddl-transition-mark {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  padding: .55rem .9rem;
-  border-radius: 999px;
-  background: rgba(255,255,255,.92);
-  border: 1px solid rgba(147,197,253,.8);
-  color: #1d4ed8;
-  font-size: .78rem;
-  font-weight: 900;
-  letter-spacing: .08em;
-  box-shadow: 0 12px 30px rgba(37,99,235,.16);
-  will-change: opacity, transform;
-  animation: ddlTransitionMark .52s cubic-bezier(.2,.75,.2,1) both;
+.ddl-light { position: absolute; width: 76vw; height: 76vw; border-radius: 50%; opacity: .55; will-change: transform; }
+.ddl-light-a { left: -24vw; top: -31vw; background: radial-gradient(circle, rgba(59,130,246,.48), rgba(59,130,246,0) 68%); animation: ddlLightA .9s ease-out both; }
+.ddl-light-b { right: -27vw; bottom: -34vw; background: radial-gradient(circle, rgba(14,165,233,.34), rgba(14,165,233,0) 70%); animation: ddlLightB .9s ease-out both; }
+.ddl-sheen { position: absolute; top: -30%; bottom: -30%; left: 0; width: 24vw; background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent); will-change: transform, opacity; animation: ddlSheen .78s ease-out both; }
+.ddl-transition-panel {
+  position: absolute; top: 50%; left: 50%; z-index: 1; width: min(78vw, 310px); padding: 1.15rem 1.2rem 1rem; text-align: center;
+  border-radius: 28px; color: #fff; background: linear-gradient(145deg, rgba(15,23,42,.96), rgba(30,64,175,.94));
+  border: 1px solid rgba(191,219,254,.45); box-shadow: 0 26px 70px rgba(30,64,175,.28), inset 0 1px 0 rgba(255,255,255,.16);
+  will-change: opacity, transform; animation: ddlPanelIn .78s cubic-bezier(.18,.78,.2,1) both;
 }
+.ddl-emblem { width: 54px; height: 54px; margin: 0 auto .6rem; display: grid; place-items: center; border-radius: 18px; font-size: 1.55rem; background: linear-gradient(145deg,#60a5fa,#2563eb); box-shadow: 0 10px 26px rgba(37,99,235,.42); animation: ddlEmblem .78s cubic-bezier(.18,.78,.2,1) both; }
+.ddl-brand { font-size: 1.1rem; font-weight: 900; letter-spacing: .08em; }
+.ddl-sub { margin-top: .35rem; color: #bfdbfe; font-size: .76rem; font-weight: 700; letter-spacing: .12em; }
+.ddl-progress { height: 3px; margin:.85rem auto .1rem; width: 72%; border-radius:999px; overflow:hidden; background:rgba(255,255,255,.18); }
+.ddl-progress span { display:block; height:100%; width:100%; transform-origin:left; border-radius:999px; background:linear-gradient(90deg,#93c5fd,#fff,#67e8f9); animation:ddlProgressFill .7s cubic-bezier(.2,.8,.2,1) both; }
 @media (prefers-reduced-motion: reduce) {
-  .ddl-transition-overlay, .ddl-transition-mark { animation: none !important; opacity: 0 !important; }
+  .ddl-transition-overlay, .ddl-transition-panel, .ddl-emblem, .ddl-light, .ddl-sheen, .ddl-progress span { animation: none !important; opacity: 0 !important; }
 }
 </style>
 """,
