@@ -250,6 +250,7 @@ def app_parsed_to_ddl_items(
                 "deadline": task_deadline,
                 "priority": str(task.get("priority") or "normal").lower(),
                 "manual_priority": bool(task.get("manual_priority")),
+                "manual_order": task.get("manual_order"),
             })
             last_task_by_tag[tag] = task_id
 

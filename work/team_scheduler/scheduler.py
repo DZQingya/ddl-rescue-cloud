@@ -319,9 +319,12 @@ def _task_sort_key(task: dict[str, Any]) -> tuple[Any, ...]:
     deadline_timestamp = _parse_deadline(deadline_iso).timestamp() if deadline_iso else float("inf")
     manual_priority = str(task.get("priority") or "normal").lower()
     priority_rank = PRIORITY_ORDER.get(manual_priority, 1)
+    manual_order = task.get("manual_order")
+    manual_order_rank = int(manual_order) if isinstance(manual_order, (int, float)) else 10_000
     return (
         LEVEL_ORDER.get(level, 1),
-        priority_rank if task.get("manual_priority") else 1,
+        0 if task.get("manual_priority") else 1,
+        manual_order_rank if task.get("manual_priority") else priority_rank,
         deadline_timestamp,
         -float(task.get("priority_score", 0)),
         -max(0, int(task.get("estimate_min", 0) or 0)),

@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
 import streamlit as st
+from streamlit_sortables import sort_items
 
 from team_scheduler.aggregate import aggregate_notifications
 from team_scheduler.replan import replan_plan
@@ -885,6 +886,8 @@ st.markdown(
 .simple-focus h2 {color:white !important; font-size:clamp(1.55rem, 6vw, 2.4rem); line-height:1.2; margin:.45rem 0;}
 .simple-focus p {color:#dbeafe; margin:.25rem 0;}
 .simple-focus .badge {background:rgba(255,255,255,.14); color:#bfdbfe;}
+.task-list-title {font-size:1.25rem; font-weight:900; color:#0f172a; margin:.35rem 0 .15rem;}
+.task-list-hint {font-size:.85rem; color:#64748b; margin-bottom:.4rem;}
 @media (max-width: 520px) {
   .block-container {padding-left:1rem; padding-right:1rem;}
   .simple-steps {gap:.3rem;}
@@ -1070,6 +1073,55 @@ elif active_step == 2:
 
     if parsed.get("risks"):
         st.warning("有些信息需要人工确认：" + "；".join(str(risk.get("message") or "") for risk in parsed["risks"] if isinstance(risk, dict)))
+
+    st.markdown('<div class="task-list-title">任务列表</div><div class="task-list-hint">按你的真实优先级排列所有任务。按住卡片上下拖动，越靠上越先做。</div>', unsafe_allow_html=True)
+    task_labels: list[str] = []
+    task_by_label: dict[str, tuple[dict, dict]] = {}
+    label_counts: dict[str, int] = {}
+    for item in items:
+        ddl_title = str(item.get("title") or "作业任务")
+        for task in item.get("tasks") or []:
+            if not isinstance(task, dict):
+                continue
+            priority_text = {"high": "高", "normal": "普通", "low": "低"}.get(str(task.get("priority") or "normal"), "普通")
+            base_label = f'{task.get("title") or "任务"} ｜ {ddl_title} ｜ {priority_text}'
+            count = label_counts.get(base_label, 0) + 1
+            label_counts[base_label] = count
+            label = base_label if count == 1 else f"{base_label} ｜ {count}"
+            task_labels.append(label)
+            task_by_label[label] = (item, task)
+
+    if task_labels:
+        sorted_labels = sort_items(
+            task_labels,
+            direction="vertical",
+            key="guided_task_order_drag",
+            custom_style="""
+            .sortable-component { border: 0; padding: 0; background: transparent; }
+            .sortable-container { background: transparent; }
+            .sortable-container-body { background: transparent; padding: 0; }
+            .sortable-item { background:#fff; border:1px solid #dbe4f0; border-radius:14px; padding:14px 16px; margin:8px 0; font-weight:800; color:#1e293b; cursor:grab; box-shadow:0 3px 12px rgba(15,23,42,.05); white-space:normal; line-height:1.45; }
+            .sortable-item:hover { border-color:#93c5fd; background:#f8fbff; }
+            .sortable-item.dragging { cursor:grabbing; opacity:.75; }
+            """,
+        )
+        if sorted_labels != task_labels:
+            for order, label in enumerate(sorted_labels):
+                pair = task_by_label.get(label)
+                if not pair:
+                    continue
+                _, drag_task = pair
+                drag_task["manual_priority"] = True
+                drag_task["manual_order"] = order
+                ratio = order / max(1, len(sorted_labels) - 1)
+                drag_task["priority"] = "high" if ratio <= 0.33 else ("low" if ratio >= 0.67 else "normal")
+            st.session_state.parsed = parsed
+            save_parsed_notice(parsed, st.session_state.get("notice_text", parsed.get("raw_text", "")))
+            st.rerun()
+        else:
+            st.caption("拖动后，排期会优先服从这个顺序。")
+    else:
+        st.info("还没有拆出任务，请展开下方“修改识别结果”补充任务。")
 
     with st.expander("修改识别结果：通知、截止时间、任务、优先级", expanded=False):
         with st.form("guided_edit_form"):
