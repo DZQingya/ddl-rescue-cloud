@@ -1,2 +1,2 @@
-v0.8.1-page-animation
+v0.8.2-local-animation
 

@@ -1187,14 +1187,49 @@ if st.session_state.get("last_page_signature") != page_signature:
     st.session_state.last_page_signature = page_signature
     st.markdown(
         """
+<div class="ddl-transition-overlay" aria-hidden="true">
+  <div class="ddl-transition-mark">DDL 急救站</div>
+</div>
 <style>
-@keyframes ddlPageEnter {
-  from { opacity: 0; transform: translateY(10px) scale(.995); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes ddlTransitionVeil {
+  0% { opacity: 0; transform: translateX(-3%); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(3%); }
 }
-.block-container { animation: ddlPageEnter .28s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes ddlTransitionMark {
+  0% { opacity: 0; transform: translate(-50%, calc(-50% + 12px)) scale(.96); }
+  22% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  72% { opacity: 1; transform: translate(-50%, calc(-50% - 3px)) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, calc(-50% - 10px)) scale(.98); }
+}
+.ddl-transition-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  overflow: hidden;
+  background: linear-gradient(112deg, rgba(37,99,235,.10), rgba(255,255,255,.74) 42%, rgba(56,189,248,.12));
+  will-change: opacity, transform;
+  animation: ddlTransitionVeil .52s cubic-bezier(.2,.75,.2,1) both;
+}
+.ddl-transition-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  padding: .55rem .9rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,.92);
+  border: 1px solid rgba(147,197,253,.8);
+  color: #1d4ed8;
+  font-size: .78rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  box-shadow: 0 12px 30px rgba(37,99,235,.16);
+  will-change: opacity, transform;
+  animation: ddlTransitionMark .52s cubic-bezier(.2,.75,.2,1) both;
+}
 @media (prefers-reduced-motion: reduce) {
-  .block-container { animation: none !important; }
+  .ddl-transition-overlay, .ddl-transition-mark { animation: none !important; opacity: 0 !important; }
 }
 </style>
 """,
