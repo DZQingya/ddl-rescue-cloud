@@ -1584,6 +1584,25 @@ else:
     level_key = {"保底": "minimum", "进阶": "standard", "挑战": "stretch"}[selected_label]
     level = plan["today_levels"][level_key]
     reward_points = {"保底": 20, "进阶": 40, "挑战": 60}[selected_label]
+
+    # Keep the My Tasks card strength in sync with the Today choice.
+    primary_task = (plan.get("today_tasks") or [{}])[0]
+    primary_ddl_id = str(primary_task.get("ddl_id") or "")
+    if not primary_ddl_id and parsed.get("ddl_items"):
+        primary_ddl_id = str((parsed["ddl_items"][0] or {}).get("id") or "")
+    for item in parsed.get("ddl_items") or []:
+        if not isinstance(item, dict) or str(item.get("id") or "") != primary_ddl_id:
+            continue
+        if str(item.get("target_level") or "保底") != selected_label:
+            item["target_level"] = selected_label
+            st.session_state.parsed = parsed
+            record_id = st.session_state.get("current_record_id")
+            if record_id:
+                save_notice(parsed, raw_text=st.session_state.get("notice_text", parsed.get("raw_text", "")), record_id=record_id)
+                primary_key = f"{record_id}::{primary_ddl_id}"
+                current_order = list(st.session_state.get("workspace_drag_order") or [])
+                st.session_state.workspace_drag_order = [primary_key] + [key for key in current_order if key != primary_key]
+        break
     current_points = int(st.session_state.get("reward_xp", 0))
     current_badge = reward_badge(current_points)[0]
     reward_copy = (
