@@ -1,0 +1,637 @@
+{
+  "meta": {
+    "suite": "vague_date_boundary",
+    "version": "v0.4",
+    "tested_build": "DDL 急救站 v0.5.1 + 日期语义补丁（2026-10-26）",
+    "tested_components": [
+      "work/mock_engine.py :: parse_notice / build_plan / generate_ics",
+      "work/team_scheduler/adapter.py :: schedule_plan"
+    ],
+    "run_date": "2026-10-26",
+    "baseline_weekday": "Monday",
+    "timezone": "Asia/Shanghai",
+    "baseline_note": "基线 = 2026-10-26（周一）21:49。下周五按自然周口径 = 2026-11-06；口语上也可能指最近的周五 2026-10-30，该歧义本身必须由系统暴露。",
+    "reproduce": "python work\\qa\\qa_probe.py",
+    "assert_human": "python work\\qa\\qa_probe.py --expect-human",
+    "machine": "python work\\qa\\qa_probe.py --json",
+    "p0_patch": [
+      "P0-1 build_plan: 无 deadline_iso -> _blocked_plan（plan_days=[], today_tasks=[], scheduling_engine=blocked）",
+      "P0-2 _find_deadline: 早于 now 的日期 -> 返回 None + 「已过期」，不再 year+1"
+    ],
+    "gate": "默认 --gate all：T1–T7 全过且 P0 2/2 才 exit 0"
+  },
+  "p0": [
+    {
+      "id": "P0-1",
+      "name": "无 DDL 不得生成计划",
+      "rule": "deadline 本身为空（无可用日期/已过期/仅区间）时，plan_days 必须为 0、today_tasks 必须为空；时间口径自相矛盾时由 schedule_ready=false 另行拦下。",
+      "applies_to": [
+        "T2",
+        "T3",
+        "T6"
+      ]
+    },
+    {
+      "id": "P0-2",
+      "name": "过去日期不得自动加一年",
+      "rule": "文本日期早于 now 且原文未写年份/明年时，deadline 置 null 并标 past_date 风险；禁止 year+1，禁止生成次年 .ics。",
+      "applies_to": [
+        "T5",
+        "T6"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "T1",
+      "priority": "P0",
+      "p0_guards": [
+        "P0-1"
+      ],
+      "focus": [
+        "下周五",
+        "本周",
+        "格式要求不明"
+      ],
+      "text": "【大学英语】本周交一篇 800 字作文，下周五之前交，格式要求不明，具体格式课上说了没听清。",
+      "mock_v05": {
+        "deadline": "2026-11-06 23:59",
+        "deadline_iso": "2026-11-06T23:59:00+08:00",
+        "deadline_source": "下周五",
+        "deadline_basis": "relative",
+        "schedule_ready": false,
+        "scenario": "冲突",
+        "confidence": 0.55,
+        "deliverables": [
+          "800 字作文"
+        ],
+        "materials": [],
+        "risks": [
+          {
+            "type": "conflict",
+            "severity": "high",
+            "message": "「本周」与「下周」的时间口径互相矛盾，需确认按哪一周执行。"
+          },
+          {
+            "type": "ambiguity",
+            "severity": "high",
+            "message": "格式/具体要求未给出，提交前需要向老师或课代表确认。"
+          }
+        ],
+        "plan_days": 0,
+        "required_minutes": 0,
+        "capacity_minutes": 0,
+        "feasible": false,
+        "scheduling_engine": "blocked",
+        "ics_generated": false,
+        "ics_year": null,
+        "today_tasks": []
+      },
+      "human_expected": {
+        "deadline": "2026-11-06T23:59:00+08:00",
+        "deadline_window": [
+          "2026-10-26",
+          "2026-11-06"
+        ],
+        "required_risks": [
+          "time: 下周五 指 10-30 还是 11-06",
+          "format: 格式未给出",
+          "self_conflict: 本周交 vs 下周五"
+        ],
+        "must_not_output": [
+          "按课堂格式要求提交",
+          "作文题目/格式要求"
+        ],
+        "note": "原文「本周交」与「下周五」自相矛盾，必须先追问；格式未知时交付要求与材料都不可填。"
+      },
+      "defects": [
+        "漏抽:相对时间(下周五/本周)",
+        "错抽:模板交付物与材料",
+        "没触发风险提示:格式缺失未报"
+      ],
+      "checks": [
+        {
+          "kind": "deadline_equals",
+          "value": "2026-11-06T23:59:00+08:00"
+        },
+        {
+          "kind": "forbidden",
+          "words": [
+            "按课堂格式要求提交"
+          ]
+        },
+        {
+          "kind": "confidence_max",
+          "value": 0.6
+        },
+        {
+          "kind": "plan_days_equals",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "priority": "P0",
+      "p0_guards": [
+        "P0-1"
+      ],
+      "focus": [
+        "另行通知"
+      ],
+      "text": "【数据结构】实验二报告提交时间另行通知，大家先把代码和实验数据准备好。",
+      "mock_v05": {
+        "deadline": "待确认",
+        "deadline_iso": null,
+        "deadline_source": "原文未给出明确日期",
+        "deadline_basis": "none",
+        "schedule_ready": false,
+        "scenario": "模糊",
+        "confidence": 0.55,
+        "deliverables": [
+          "数据结构实验二报告"
+        ],
+        "materials": [
+          "实验数据",
+          "代码文件"
+        ],
+        "risks": [
+          {
+            "type": "ambiguity",
+            "severity": "high",
+            "message": "原文没有明确日期，需要确认具体截止时间。"
+          },
+          {
+            "type": "ambiguity",
+            "severity": "high",
+            "message": "有要求「另行通知」，当前无法确定具体时间/方式/尺寸，需要追问。"
+          }
+        ],
+        "plan_days": 0,
+        "required_minutes": 0,
+        "capacity_minutes": 0,
+        "feasible": false,
+        "scheduling_engine": "blocked",
+        "ics_generated": false,
+        "ics_year": null,
+        "today_tasks": []
+      },
+      "human_expected": {
+        "deadline": null,
+        "urgency": "unknown",
+        "required_risks": [
+          "time: 截止时间未知，无法排期",
+          "channel: 提交方式未知"
+        ],
+        "must_not_output": [
+          "C 语言实验报告",
+          "提交代码与实验数据"
+        ],
+        "note": "「先把代码和实验数据准备好」是前置动作，不是交付物；学科不应写死。"
+      },
+      "defects": [
+        "错抽:学科误判为C语言",
+        "错抽:前置动作当交付物",
+        "风险归因错误:缺无法排期/需追问"
+      ],
+      "checks": [
+        {
+          "kind": "deadline_null"
+        },
+        {
+          "kind": "forbidden",
+          "words": [
+            "C 语言实验报告"
+          ]
+        },
+        {
+          "kind": "confidence_max",
+          "value": 0.6
+        },
+        {
+          "kind": "plan_days_equals",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "priority": "P1",
+      "p0_guards": [
+        "P0-1"
+      ],
+      "focus": [
+        "尽快",
+        "这周内",
+        "尺寸另行通知"
+      ],
+      "text": "【社团】招新海报这周内尽快做出来发我，尺寸另行通知。",
+      "mock_v05": {
+        "deadline": "待确认",
+        "deadline_iso": null,
+        "deadline_source": "这周内",
+        "deadline_basis": "window",
+        "schedule_ready": false,
+        "scenario": "模糊",
+        "confidence": 0.55,
+        "deliverables": [
+          "社团招新海报"
+        ],
+        "materials": [],
+        "risks": [
+          {
+            "type": "ambiguity",
+            "severity": "high",
+            "message": "原文没有明确日期，需要确认具体截止时间。"
+          },
+          {
+            "type": "ambiguity",
+            "severity": "high",
+            "message": "有要求「另行通知」，当前无法确定具体时间/方式/尺寸，需要追问。"
+          },
+          {
+            "type": "ambiguity",
+            "severity": "medium",
+            "message": "「尽快」是模糊时限，建议尽快确认一个具体日期。"
+          }
+        ],
+        "plan_days": 0,
+        "required_minutes": 0,
+        "capacity_minutes": 0,
+        "feasible": false,
+        "scheduling_engine": "blocked",
+        "ics_generated": false,
+        "ics_year": null,
+        "today_tasks": []
+      },
+      "human_expected": {
+        "deadline": null,
+        "deadline_window": [
+          "2026-10-26",
+          "2026-11-01"
+        ],
+        "urgency": "asap",
+        "suggested_deadline": "2026-10-30",
+        "suggested_deadline_source": "system_suggestion",
+        "required_risks": [
+          "time_window: 这周内",
+          "material: 尺寸未定"
+        ],
+        "must_not_output": [
+          "海报尺寸要求"
+        ],
+        "note": "「尽快」只能给建议日期且必须标 system_suggestion，不得混入 deadline_raw。"
+      },
+      "defects": [
+        "漏抽:时间区间",
+        "错抽:材料幻觉(尺寸要求)",
+        "没触发风险提示:该报 missing_material"
+      ],
+      "checks": [
+        {
+          "kind": "deadline_null"
+        },
+        {
+          "kind": "forbidden",
+          "words": [
+            "海报尺寸要求"
+          ]
+        },
+        {
+          "kind": "confidence_max",
+          "value": 0.6
+        },
+        {
+          "kind": "plan_days_equals",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "priority": "P0",
+      "p0_guards": [],
+      "focus": [
+        "提交方式另行通知",
+        "格式要求不明",
+        "题号范围"
+      ],
+      "text": "【数学分析】习题 3-5 于 11月1日交，提交方式另行通知，格式要求不明。",
+      "mock_v05": {
+        "deadline": "2026-11-01 23:59",
+        "deadline_iso": "2026-11-01T23:59:00+08:00",
+        "deadline_source": "11月1日",
+        "deadline_basis": "explicit",
+        "schedule_ready": true,
+        "scenario": "清晰",
+        "confidence": 0.6,
+        "deliverables": [
+          "完成习题 3-5"
+        ],
+        "materials": [],
+        "risks": [
+          {
+            "type": "ambiguity",
+            "severity": "high",
+            "message": "有要求「另行通知」，当前无法确定具体时间/方式/尺寸，需要追问。"
+          },
+          {
+            "type": "ambiguity",
+            "severity": "high",
+            "message": "格式/具体要求未给出，提交前需要向老师或课代表确认。"
+          }
+        ],
+        "plan_days": 4,
+        "required_minutes": 115,
+        "capacity_minutes": 960,
+        "feasible": true,
+        "scheduling_engine": "team_scheduler",
+        "ics_generated": true,
+        "ics_year": "2026",
+        "today_tasks": [
+          "完成第 1 题的完整过程"
+        ]
+      },
+      "human_expected": {
+        "deadline": "2026-11-01T23:59:00+08:00",
+        "deadline_note": "也读作「11月1日上课前」，需确认具体时刻",
+        "required_risks": [
+          "channel: 提交方式未知（线上/纸质/课代表）",
+          "format: 格式未给出"
+        ],
+        "must_not_output": [
+          "手写拍照上传",
+          "完成习题 1-5"
+        ],
+        "note": "通道未知属于 blocking，置信度不得 0.93，场景不得判「清晰」。"
+      },
+      "defects": [
+        "错抽:题号范围3-5→1-5",
+        "错抽:凭空生成提交方式",
+        "没触发风险提示:高阻塞降为medium且场景判清晰93%"
+      ],
+      "checks": [
+        {
+          "kind": "deadline_equals",
+          "value": "2026-11-01T23:59:00+08:00"
+        },
+        {
+          "kind": "forbidden",
+          "words": [
+            "手写拍照上传",
+            "完成习题 1-5"
+          ]
+        },
+        {
+          "kind": "confidence_max",
+          "value": 0.6
+        },
+        {
+          "kind": "min_high_risks",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "priority": "P0",
+      "p0_guards": [
+        "P0-2"
+      ],
+      "focus": [
+        "下周五",
+        "发题日干扰",
+        "过去日期跨年"
+      ],
+      "text": "10月24日课上发的题目，下周五前交，尽快完成，格式要求不明。",
+      "mock_v05": {
+        "deadline": "2026-11-06 23:59",
+        "deadline_iso": "2026-11-06T23:59:00+08:00",
+        "deadline_source": "下周五",
+        "deadline_basis": "relative",
+        "schedule_ready": true,
+        "scenario": "清晰",
+        "confidence": 0.55,
+        "deliverables": [
+          "完成课上发的题目"
+        ],
+        "materials": [],
+        "risks": [
+          {
+            "type": "ambiguity",
+            "severity": "medium",
+            "message": "相对时间存在两种口语理解（本周/下周），已按自然周取值，需要确认。"
+          },
+          {
+            "type": "ambiguity",
+            "severity": "high",
+            "message": "格式/具体要求未给出，提交前需要向老师或课代表确认。"
+          },
+          {
+            "type": "ambiguity",
+            "severity": "medium",
+            "message": "「尽快」是模糊时限，建议尽快确认一个具体日期。"
+          }
+        ],
+        "plan_days": 3,
+        "required_minutes": 80,
+        "capacity_minutes": 960,
+        "feasible": true,
+        "scheduling_engine": "team_scheduler",
+        "ics_generated": true,
+        "ics_year": "2026",
+        "today_tasks": [
+          "完成最小可交版本的第一部分"
+        ]
+      },
+      "human_expected": {
+        "deadline": "2026-11-06T23:59:00+08:00",
+        "context_dates": [
+          {
+            "raw": "10月24日",
+            "role": "issue",
+            "source_span": "10月24日课上发的题目"
+          }
+        ],
+        "required_risks": [
+          "time: 下周五 口语歧义",
+          "format: 格式未给出"
+        ],
+        "must_not_output": [
+          "2027-10-24T23:59:00",
+          "完成通知中的任务"
+        ],
+        "note": "发题日不能当截止日；过去日期不得 year+1。"
+      },
+      "defects": [
+        "错抽:发题日当DDL",
+        "错抽:过去日期自动+1年→2027",
+        "没触发风险提示:无过期告警且仍93%置信度并导出错误日历"
+      ],
+      "checks": [
+        {
+          "kind": "deadline_equals",
+          "value": "2026-11-06T23:59:00+08:00"
+        },
+        {
+          "kind": "ics_year",
+          "value": "2026"
+        },
+        {
+          "kind": "confidence_max",
+          "value": 0.6
+        },
+        {
+          "kind": "min_high_risks",
+          "value": 1
+        },
+        {
+          "kind": "deadline_year_not",
+          "value": 2027
+        }
+      ]
+    },
+    {
+      "id": "T6",
+      "priority": "P0",
+      "p0_guards": [
+        "P0-1",
+        "P0-2"
+      ],
+      "focus": [
+        "纯过去日期",
+        "补交时间另行通知"
+      ],
+      "text": "10月20日提交的实验报告，老师说可以补交，具体补交时间另行通知。",
+      "mock_v05": {
+        "deadline": "待确认",
+        "deadline_iso": null,
+        "deadline_source": "原文日期已过期（10月20日）",
+        "deadline_basis": "none",
+        "schedule_ready": false,
+        "scenario": "模糊",
+        "confidence": 0.4,
+        "deliverables": [
+          "实验报告"
+        ],
+        "materials": [],
+        "risks": [
+          {
+            "type": "ambiguity",
+            "severity": "high",
+            "message": "原文日期已过期，不能当作未来的截止时间；需要确认新的截止时间。"
+          },
+          {
+            "type": "ambiguity",
+            "severity": "high",
+            "message": "有要求「另行通知」，当前无法确定具体时间/方式/尺寸，需要追问。"
+          }
+        ],
+        "plan_days": 0,
+        "required_minutes": 0,
+        "capacity_minutes": 0,
+        "feasible": false,
+        "scheduling_engine": "blocked",
+        "ics_generated": false,
+        "ics_year": null,
+        "today_tasks": []
+      },
+      "human_expected": {
+        "deadline": null,
+        "urgency": "unknown",
+        "required_risks": [
+          "past_date: 原文日期已过期",
+          "time: 补交时间未知"
+        ],
+        "must_not_output": [
+          "2027-10-20T23:59:00"
+        ],
+        "note": "已过期的日期不是未来截止时间；补交时间未给 = 无 DDL，不得排期。"
+      },
+      "defects": [
+        "错抽:过去日期→次年",
+        "没触发风险提示:无过期告警",
+        "无 DDL 却排出 4 天计划"
+      ],
+      "checks": [
+        {
+          "kind": "deadline_null"
+        },
+        {
+          "kind": "ics_empty"
+        },
+        {
+          "kind": "plan_days_equals",
+          "value": 0
+        },
+        {
+          "kind": "confidence_max",
+          "value": 0.6
+        },
+        {
+          "kind": "deadline_year_not",
+          "value": 2027
+        }
+      ]
+    },
+    {
+      "id": "T7",
+      "priority": "P1",
+      "p0_guards": [],
+      "focus": [
+        "明天中午12点",
+        "时刻语义"
+      ],
+      "text": "【英语】作文明天中午12点前交到学习通。",
+      "mock_v05": {
+        "deadline": "2026-10-27 12:00",
+        "deadline_iso": "2026-10-27T12:00:00+08:00",
+        "deadline_source": "明天",
+        "deadline_basis": "relative",
+        "schedule_ready": true,
+        "scenario": "清晰",
+        "confidence": 0.55,
+        "deliverables": [
+          "英语作文"
+        ],
+        "materials": [],
+        "risks": [],
+        "plan_days": 2,
+        "required_minutes": 90,
+        "capacity_minutes": 240,
+        "feasible": true,
+        "scheduling_engine": "team_scheduler",
+        "ics_generated": true,
+        "ics_year": "2026",
+        "today_tasks": [
+          "写完作文第一段"
+        ]
+      },
+      "human_expected": {
+        "deadline": "2026-10-27T12:00:00+08:00",
+        "required_risks": [],
+        "must_not_output": [
+          "按课堂格式要求提交"
+        ],
+        "note": "「中午12点」是硬时刻，不能落成 23:59；渠道（学习通）应被抽成 channel。"
+      },
+      "defects": [
+        "漏抽:时刻(23:59 比 12:00 晚 11 小时 59 分)",
+        "错抽:模板交付物",
+        "没触发风险提示:0 条风险"
+      ],
+      "checks": [
+        {
+          "kind": "deadline_equals",
+          "value": "2026-10-27T12:00:00+08:00"
+        },
+        {
+          "kind": "forbidden",
+          "words": [
+            "按课堂格式要求提交"
+          ]
+        }
+      ]
+    }
+  ]
+}

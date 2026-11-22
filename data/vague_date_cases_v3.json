@@ -1,0 +1,160 @@
+{
+  "meta": {
+    "suite": "vague_date_boundary_v3",
+    "version": "v3.1",
+    "owner": "组员3 · 日期语义 / 模糊边界 QA",
+    "purpose": "冻结时钟下的边界补测：跨年、时区/凌晨、时刻语义、周末 DDL、月底窗口",
+    "baseline_now": "2026-10-26T21:49:00+08:00",
+    "baseline_weekday": "Monday",
+    "clock_frozen": true,
+    "clock_mode": "per-case：默认 2026-10-26T21:49:00+08:00，B1 覆盖为 2026-12-20T10:00:00+08:00",
+    "clock_note": "时钟由 qa_probe.py 的 --now / 用例 now 字段注入，不依赖真实日期；本套件在冻结时钟下可重复跑出同一结果。",
+    "tested_build": "ddl-v051-qa-20261026（日期语义 v2 套件 7/7 版本，引擎 sha256 1893bbdb63dfbedb）",
+    "integration": "release_gate.py 的第二组（date-v3）；不改现有 T1–T7 断言。"
+  },
+  "p0": [],
+  "cases": [
+    {
+      "id": "B1",
+      "priority": "P0",
+      "focus": [
+        "跨年",
+        "显式年份",
+        "发布日只作上下文"
+      ],
+      "now": "2026-12-20T10:00:00+08:00",
+      "text": "【课程论文】通知于2026年12月20日发布，2027年1月5日前提交。",
+      "expected_blocked": false,
+      "expected_risk_types": [
+        "time"
+      ],
+      "human_expected": {
+        "deadline": "2027-01-05T23:59:00+08:00",
+        "note": "冻结在 2026-12-20 10:00（12 月收到通知）；发布日只作上下文，显式年份 2027 必须生效，截止为次年 1 月 5 日。"
+      },
+      "checks": [
+        {
+          "kind": "deadline_equals",
+          "value": "2027-01-05T23:59:00+08:00"
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "priority": "P0",
+      "focus": [
+        "时区",
+        "凌晨截止"
+      ],
+      "now": "2026-10-26T21:49:00+08:00",
+      "text": "【实验报告】明天凌晨1点前提交到学习通。",
+      "expected_blocked": false,
+      "expected_risk_types": [
+        "time"
+      ],
+      "human_expected": {
+        "deadline": "2026-10-27T01:00:00+08:00",
+        "note": "冻结在 2026-10-26 21:49；明天凌晨 1 点 = 2026-10-27 01:00（Asia/Shanghai），距当前约 3 小时；ISO 必须带时区偏移。"
+      },
+      "checks": [
+        {
+          "kind": "deadline_equals",
+          "value": "2026-10-27T01:00:00+08:00"
+        }
+      ]
+    },
+    {
+      "id": "B3",
+      "priority": "P1",
+      "focus": [
+        "时刻语义",
+        "下午3点"
+      ],
+      "now": "2026-10-26T21:49:00+08:00",
+      "text": "【课堂展示】明天下午3点前把 PPT 发到课程群。",
+      "expected_blocked": false,
+      "expected_risk_types": [],
+      "human_expected": {
+        "deadline": "2026-10-27T15:00:00+08:00",
+        "note": "「下午3点」= 15:00，不能落成 23:59；时区问题另见 B2。"
+      },
+      "checks": [
+        {
+          "kind": "deadline_equals",
+          "value": "2026-10-27T15:00:00+08:00"
+        }
+      ]
+    },
+    {
+      "id": "B4",
+      "priority": "P1",
+      "focus": [
+        "周末 DDL",
+        "本周日"
+      ],
+      "now": "2026-10-26T21:49:00+08:00",
+      "text": "【英语】作文本周日23:59前提交。",
+      "expected_blocked": false,
+      "expected_risk_types": [
+        "time"
+      ],
+      "human_expected": {
+        "deadline": "2026-11-01T23:59:00+08:00",
+        "note": "本周日 = 2026-11-01（周日）；周末截止应提示「非工作日、容易错过」。"
+      },
+      "checks": [
+        {
+          "kind": "deadline_equals",
+          "value": "2026-11-01T23:59:00+08:00"
+        },
+        {
+          "kind": "ics_year",
+          "value": "2026"
+        }
+      ]
+    },
+    {
+      "id": "B5",
+      "priority": "P0",
+      "focus": [
+        "月底前",
+        "时间窗口",
+        "尺寸未定"
+      ],
+      "now": "2026-10-26T21:49:00+08:00",
+      "text": "【社团】招新海报月底前交，尺寸另行通知。",
+      "expected_blocked": true,
+      "expected_risk_types": [
+        "time_window",
+        "material"
+      ],
+      "human_expected": {
+        "deadline": null,
+        "window": [
+          "2026-10-26",
+          "2026-10-31"
+        ],
+        "note": "「月底前」是窗口（10-26 ~ 10-31 23:59），不是单点；无确定时刻且尺寸未定 → blocked，风险类型 time_window + material。"
+      },
+      "checks": [
+        {
+          "kind": "deadline_null"
+        },
+        {
+          "kind": "plan_days_equals",
+          "value": 0
+        },
+        {
+          "kind": "confidence_max",
+          "value": 0.6
+        },
+        {
+          "kind": "forbidden",
+          "words": [
+            "海报尺寸要求"
+          ]
+        }
+      ]
+    }
+  ]
+}
