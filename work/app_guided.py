@@ -1291,7 +1291,7 @@ if LOCAL_PACKAGE_PATH.exists():
         use_container_width=True,
         key="local_deploy_download",
     )
-    st.caption("下载后解压，双击“一键部署.bat”。不经过 GitHub，下载失败时请重试应用内按钮。")
+    st.caption("下载后解压，双击“一键部署.bat”。完成后桌面会生成 DDL急救站 快捷方式，包内也可双击“启动.bat”重新打开。")
 def switch_to_my_tasks() -> None:
     st.session_state.guided_section = "我的任务"
 

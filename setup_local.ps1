@@ -1,4 +1,4 @@
-﻿param([switch]$CheckOnly)
+﻿param([switch]$CheckOnly, [switch]$SetupOnly)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -LiteralPath $root
@@ -25,7 +25,7 @@ $pythonCmd = Find-Python
 if (-not $pythonCmd) {
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if (-not $winget) {
-        throw "未检测到 Python，也没有 winget。请先安装 Python 3.12+，或使用 LOCAL_DEPLOY.md 中的手动步骤。"
+        throw "未检测到 Python，也没有 winget。请先安装 Python 3.12+，或使用手动步骤启动。"
     }
     Write-Host "未检测到 Python，正在通过 winget 自动安装 Python 3.12..." -ForegroundColor Yellow
     & winget install -e --id Python.Python.3.12 --scope user --silent --accept-package-agreements --accept-source-agreements
@@ -54,9 +54,28 @@ if ($CheckOnly) {
     exit 0
 }
 
+$desktop = [Environment]::GetFolderPath("Desktop")
+$launcher = Join-Path $root "启动.bat"
+if (Test-Path -LiteralPath $launcher) {
+    $shortcutPath = Join-Path $desktop "DDL急救站.lnk"
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $launcher
+    $shortcut.WorkingDirectory = $root
+    $shortcut.Description = "打开 DDL 急救站本地工作台"
+    $shortcut.IconLocation = "$env:SystemRoot\System32\shell32.dll,21"
+    $shortcut.Save()
+    Write-Host "已创建桌面快捷方式：DDL急救站" -ForegroundColor Green
+}
+
+if ($SetupOnly) {
+    Write-Host "安装完成，可从桌面或包内启动.bat重新打开。" -ForegroundColor Green
+    exit 0
+}
+
 $browserHelper = "Start-Sleep -Seconds 3; Start-Process 'http://localhost:8501'"
 Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -ArgumentList @("-NoProfile", "-Command", $browserHelper)
 
 Write-Host "启动本地服务，浏览器会自动打开..." -ForegroundColor Green
-Write-Host "手机同 Wi-Fi 访问：http://电脑局域网IP:8501" -ForegroundColor Gray
+Write-Host "关闭此窗口即停止服务；下次双击桌面快捷方式或启动.bat重新打开。" -ForegroundColor Gray
 & $venvPython -m streamlit run work\app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true
