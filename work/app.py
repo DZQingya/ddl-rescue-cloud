@@ -49,6 +49,8 @@ if "reward_streak" not in st.session_state:
     st.session_state.reward_streak = 0
 if "last_reward_points" not in st.session_state:
     st.session_state.last_reward_points = 0
+if "reward_claimed_keys" not in st.session_state:
+    st.session_state.reward_claimed_keys = []
 
 st.markdown(
     """
@@ -581,6 +583,12 @@ def _sync_notice_status(record_id: str) -> None:
 
 
 def _apply_ddl_status(record: dict, ddl_id: str, status: str, has_ddl_row: bool) -> None:
+    if status == "done":
+        grant_reward(
+            20,
+            f"workspace:{record['id']}:{ddl_id}",
+            reason="完成任务",
+        )
     if has_ddl_row:
         update_ddl_status(record["id"], ddl_id, status)
         _sync_notice_status(record["id"])
@@ -831,7 +839,7 @@ def render_workspace(draggable: bool = False) -> None:
             if display_status == "primary" else ""
         )
         suffix = record["id"] if card["card_count"] == 1 else f"{record['id']}_{ddl_id}"
-        st.markdown(f"**{html.escape(str(item.get('title') or '未命名 DDL'))}** · {html.escape(status_label)} · 截止 {html.escape(_format_ddl_deadline(item))}")
+        st.markdown(f"**{html.escape(str(item.get('title') or '未命名 DDL'))}** · {html.escape(status_label)} · 截止 {html.escape(_format_ddl_deadline(item))} · 完成 +20 分")
         load_col, start_col, complete_col, stuck_col = st.columns([1.2, 1.0, 1.0, 1.0])
         with load_col:
             if st.button("载入编辑", key=f"workspace_load_{suffix}", use_container_width=True):
@@ -975,6 +983,21 @@ def guided_step() -> int:
     if st.session_state.get("parsed"):
         return 2
     return 1
+
+
+def grant_reward(points: int, key: str, *, count_completion: bool = True, reason: str = "任务完成") -> int:
+    claimed = set(st.session_state.get("reward_claimed_keys", []))
+    if key in claimed:
+        return 0
+    claimed.add(key)
+    st.session_state.reward_claimed_keys = sorted(claimed)
+    st.session_state.reward_xp = int(st.session_state.get("reward_xp", 0)) + int(points)
+    st.session_state.last_reward_points = int(points)
+    if count_completion:
+        st.session_state.reward_completed_count = int(st.session_state.get("reward_completed_count", 0)) + 1
+        st.session_state.reward_streak = int(st.session_state.get("reward_streak", 0)) + 1
+    st.toast(f"{reason}，+{int(points)} 分")
+    return int(points)
 
 
 def reward_badge(points: int) -> tuple[str, str]:
@@ -1436,9 +1459,9 @@ else:
         c1, c2, c3 = st.columns(3)
         if c1.button("开始 / 继续", type="primary", use_container_width=True):
             if not st.session_state.get("start_bonus_awarded", False):
-                st.session_state.reward_xp = int(st.session_state.get("reward_xp", 0)) + 2
+                reward_key = f"start:{st.session_state.get('current_record_id') or 'local'}:{plan.get('today_task_title') or 'task'}"
+                grant_reward(2, reward_key, count_completion=False, reason="启动成功")
                 st.session_state.start_bonus_awarded = True
-                st.toast("启动成功，+2 分")
             st.session_state.started = True
             st.session_state.stuck = False
             st.session_state.replan = None
@@ -1446,10 +1469,8 @@ else:
         if c2.button(f"完成了，领 +{reward_points} 分", use_container_width=True):
             st.session_state.completed = True
             st.session_state.stuck = False
-            st.session_state.reward_xp = int(st.session_state.get("reward_xp", 0)) + reward_points
-            st.session_state.reward_completed_count = int(st.session_state.get("reward_completed_count", 0)) + 1
-            st.session_state.reward_streak = int(st.session_state.get("reward_streak", 0)) + 1
-            st.session_state.last_reward_points = reward_points
+            reward_key = f"guided:{st.session_state.get('current_record_id') or 'local'}:{selected_label}:{level.get('deliverable')}"
+            grant_reward(reward_points, reward_key, reason=f"完成{selected_label}目标")
             st.balloons()
             st.rerun()
         if c3.button("我卡住了", use_container_width=True):
