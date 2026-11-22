@@ -1065,7 +1065,7 @@ def reset_guided() -> None:
     st.session_state.notice_text = ""
 
 
-def save_parsed_notice(parsed: dict, raw_text: str) -> str:
+def save_parsed_notice(parsed: dict, raw_text: str, *, reset_statuses: bool = False) -> str:
     normalized_text = str(raw_text).strip()
     existing = next(
         (
@@ -1085,10 +1085,24 @@ def save_parsed_notice(parsed: dict, raw_text: str) -> str:
         record_id=existing["id"] if existing else st.session_state.get("current_record_id"),
     )
     st.session_state.current_record_id = saved["id"]
+    if reset_statuses:
+        record_id = saved["id"]
+        update_status(record_id, "pending")
+        for item in parsed.get("ddl_items") or []:
+            if isinstance(item, dict) and str(item.get("id") or "").strip():
+                update_ddl_status(record_id, str(item["id"]), "pending")
+        st.session_state.reward_claimed_keys = [
+            key for key in st.session_state.get("reward_claimed_keys", [])
+            if record_id not in str(key)
+        ]
+        st.session_state.completed = False
+        st.session_state.started = False
+        st.session_state.stuck = False
+        st.session_state.replan = None
     return saved["id"]
 
 
-def run_parse(raw_text: str) -> None:
+def run_parse(raw_text: str, *, reset_statuses: bool = False) -> None:
     text = str(raw_text or "").strip()
     if not text:
         st.warning("先粘贴一条作业通知。")
@@ -1101,7 +1115,7 @@ def run_parse(raw_text: str) -> None:
             api_key=st.session_state.get("llm_api_key", provider_defaults["api_key"]),
             model=st.session_state.get("llm_model", provider_defaults["model"]),
         )
-        save_parsed_notice(parsed, text)
+        save_parsed_notice(parsed, text, reset_statuses=reset_statuses)
     st.session_state.parsed = parsed
     st.session_state.plan = None
     st.session_state.started = False
@@ -1172,10 +1186,10 @@ if active_step == 1:
     )
 
     if st.button("开始急救", type="primary", use_container_width=True, key="guided_parse"):
-        run_parse(st.session_state.get("notice_text", ""))
+        run_parse(st.session_state.get("notice_text", ""), reset_statuses=True)
 
     if st.session_state.pop("guided_demo_requested", False):
-        run_parse(st.session_state.get("notice_text", ""))
+        run_parse(st.session_state.get("notice_text", ""), reset_statuses=True)
 
     with st.expander("高级设置：真实模型（通常不用改）"):
         st.selectbox(
@@ -1378,7 +1392,7 @@ elif active_step == 2:
 
         st.button("重新解析原文", use_container_width=True, on_click=queue_raw_reparse)
         if st.session_state.pop("guided_raw_requested", False):
-            run_parse(st.session_state.get("notice_text", ""))
+            run_parse(st.session_state.get("notice_text", ""), reset_statuses=False)
 
     st.markdown('<div class="simple-question" style="font-size:1.2rem;margin-top:1rem;">你每天大概能投入多久？</div>', unsafe_allow_html=True)
     available_minutes = st.slider(
