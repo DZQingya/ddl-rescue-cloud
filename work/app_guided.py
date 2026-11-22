@@ -588,6 +588,7 @@ def _apply_ddl_status(record: dict, ddl_id: str, status: str, has_ddl_row: bool)
             20,
             f"workspace:{record['id']}:{ddl_id}",
             reason="完成任务",
+            celebrate=True,
         )
     if has_ddl_row:
         update_ddl_status(record["id"], ddl_id, status)
@@ -742,7 +743,7 @@ def render_workspace(draggable: bool = False) -> None:
             custom_style="""
             .sortable-component { border:0; padding:0; background:transparent; }
             .sortable-container, .sortable-container-body { background:transparent; padding:0; }
-            .sortable-item { background:#fff; border:1px solid #dbe4f0; border-radius:18px; padding:14px 16px; margin:10px 0; min-height:166px; height:166px; display:block; font-weight:700; color:#1e293b; cursor:grab; box-shadow:0 4px 16px rgba(15,23,42,.06); white-space:pre-line; overflow:hidden; line-height:1.5; touch-action:none; user-select:none; }
+            .sortable-item { background:linear-gradient(135deg,#0f172a,#1e3a8a); border:1px solid rgba(147,197,253,.35); border-radius:24px; padding:18px 20px; margin:12px 0; min-height:176px; height:176px; display:block; font-weight:800; color:#fff; cursor:grab; box-shadow:0 14px 30px rgba(15,23,42,.18); white-space:pre-line; overflow:hidden; line-height:1.55; touch-action:none; user-select:none; }
             .sortable-item.active:not(.dragging) { opacity:.30; }
             .sortable-item.dragging { cursor:grabbing; opacity:1; box-shadow:0 18px 38px rgba(15,23,42,.2); }
             """,
@@ -985,7 +986,7 @@ def guided_step() -> int:
     return 1
 
 
-def grant_reward(points: int, key: str, *, count_completion: bool = True, reason: str = "任务完成") -> int:
+def grant_reward(points: int, key: str, *, count_completion: bool = True, reason: str = "任务完成", celebrate: bool = False) -> int:
     claimed = set(st.session_state.get("reward_claimed_keys", []))
     if key in claimed:
         return 0
@@ -996,7 +997,10 @@ def grant_reward(points: int, key: str, *, count_completion: bool = True, reason
     if count_completion:
         st.session_state.reward_completed_count = int(st.session_state.get("reward_completed_count", 0)) + 1
         st.session_state.reward_streak = int(st.session_state.get("reward_streak", 0)) + 1
-    st.toast(f"{reason}，+{int(points)} 分")
+    st.session_state.reward_notice = f"{reason}，+{int(points)} 分已到账！"
+    st.toast(st.session_state.reward_notice)
+    if celebrate:
+        st.balloons()
     return int(points)
 
 
@@ -1130,9 +1134,15 @@ section = st.segmented_control(
     label_visibility="collapsed",
     width="stretch",
 )
+def switch_to_my_tasks() -> None:
+    st.session_state.guided_section = "我的任务"
+
+
 if section == "我的任务":
     st.markdown('<div class="simple-kicker">我的任务</div><div class="simple-question">先做什么，由你决定</div><div class="simple-note">保存过的 DDL 都在下面；拖动排序后，今日主攻和计划顺序会一起更新。</div>', unsafe_allow_html=True)
     render_reward_summary(compact=True)
+    if st.session_state.get("reward_notice"):
+        st.success(st.session_state.reward_notice)
     render_workspace(draggable=True)
     st.stop()
 
@@ -1433,7 +1443,7 @@ else:
         '<div class="reward-card">'
         '<div class="reward-title">完成奖励</div>'
         f'<div class="reward-points">+{reward_points} 分</div>'
-        f'<div class="reward-copy">先完成「{html.escape(selected_label)}」目标，积分马上到账。开始任务还会额外获得 2 分启动奖励。</div>'
+        f'<div class="reward-copy">先做「{html.escape(selected_label)}」目标，完成后去「我的任务」确认，积分才会到账。开始任务仍有 2 分启动奖励。</div>'
         f'<span class="reward-pill">当前 {current_points} 分 · {html.escape(current_badge)}</span>'
         '</div>'
     )
@@ -1466,13 +1476,7 @@ else:
             st.session_state.stuck = False
             st.session_state.replan = None
             st.rerun()
-        if c2.button(f"完成了，领 +{reward_points} 分", use_container_width=True):
-            st.session_state.completed = True
-            st.session_state.stuck = False
-            reward_key = f"guided:{st.session_state.get('current_record_id') or 'local'}:{selected_label}:{level.get('deliverable')}"
-            grant_reward(reward_points, reward_key, reason=f"完成{selected_label}目标")
-            st.balloons()
-            st.rerun()
+        c2.button("去我的任务确认完成", use_container_width=True, on_click=switch_to_my_tasks)
         if c3.button("我卡住了", use_container_width=True):
             st.session_state.stuck = True
             st.rerun()
