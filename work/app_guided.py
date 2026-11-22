@@ -1078,16 +1078,18 @@ elif active_step == 2:
     task_labels: list[str] = []
     task_by_label: dict[str, tuple[dict, dict]] = {}
     label_counts: dict[str, int] = {}
-    for item in items:
+    for ddl_index, item in enumerate(items):
         ddl_title = str(item.get("title") or "作业任务")
-        for task in item.get("tasks") or []:
+        ddl_key = str(item.get("id") or f"DDL{ddl_index + 1}")
+        for task_index, task in enumerate(item.get("tasks") or []):
             if not isinstance(task, dict):
                 continue
-            priority_text = {"high": "高", "normal": "普通", "low": "低"}.get(str(task.get("priority") or "normal"), "普通")
-            base_label = f'{task.get("title") or "任务"} ｜ {ddl_title} ｜ {priority_text}'
+            task_title = str(task.get("title") or "任务")
+            task_key = str(task.get("id") or f"T{task_index + 1}")
+            base_label = f"{task_title} ｜ {ddl_title}"
             count = label_counts.get(base_label, 0) + 1
             label_counts[base_label] = count
-            label = base_label if count == 1 else f"{base_label} ｜ {count}"
+            label = base_label if count == 1 else f"{base_label} ｜ {ddl_key}:{task_key}"
             task_labels.append(label)
             task_by_label[label] = (item, task)
 
@@ -1100,11 +1102,14 @@ elif active_step == 2:
             .sortable-component { border: 0; padding: 0; background: transparent; }
             .sortable-container { background: transparent; }
             .sortable-container-body { background: transparent; padding: 0; }
-            .sortable-item { background:#fff; border:1px solid #dbe4f0; border-radius:14px; padding:14px 16px; margin:8px 0; font-weight:800; color:#1e293b; cursor:grab; box-shadow:0 3px 12px rgba(15,23,42,.05); white-space:normal; line-height:1.45; }
+            .sortable-container-body { min-height: 56px; }
+            .sortable-item { background:#fff; border:1px solid #dbe4f0; border-radius:14px; padding:0 16px; margin:8px 0; min-height:56px; height:56px; display:flex; align-items:center; font-weight:800; color:#1e293b; cursor:grab; box-shadow:0 3px 12px rgba(15,23,42,.05); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.2; touch-action:none; user-select:none; }
             .sortable-item:hover { border-color:#93c5fd; background:#f8fbff; }
-            .sortable-item.dragging { cursor:grabbing; opacity:.75; }
+            .sortable-item.active:not(.dragging) { opacity:.30; }
+            .sortable-item.dragging { cursor:grabbing; opacity:1; box-shadow:0 14px 32px rgba(15,23,42,.18); }
             """,
         )
+        st.session_state.guided_drag_order = sorted_labels
         if sorted_labels != task_labels:
             for order, label in enumerate(sorted_labels):
                 pair = task_by_label.get(label)
@@ -1113,13 +1118,10 @@ elif active_step == 2:
                 _, drag_task = pair
                 drag_task["manual_priority"] = True
                 drag_task["manual_order"] = order
-                ratio = order / max(1, len(sorted_labels) - 1)
-                drag_task["priority"] = "high" if ratio <= 0.33 else ("low" if ratio >= 0.67 else "normal")
             st.session_state.parsed = parsed
-            save_parsed_notice(parsed, st.session_state.get("notice_text", parsed.get("raw_text", "")))
-            st.rerun()
+            st.caption("顺序已更新，生成计划时会按这个顺序排期。")
         else:
-            st.caption("拖动后，排期会优先服从这个顺序。")
+            st.caption("按住卡片上下拖动。拖动顺序会直接进入排期。")
     else:
         st.info("还没有拆出任务，请展开下方“修改识别结果”补充任务。")
 
@@ -1249,6 +1251,16 @@ elif active_step == 2:
             st.rerun()
     with col_plan:
         if st.button("生成今日行动计划", type="primary", use_container_width=True):
+            drag_order = st.session_state.get("guided_drag_order") or []
+            for order, label in enumerate(drag_order):
+                pair = task_by_label.get(label)
+                if not pair:
+                    continue
+                _, drag_task = pair
+                drag_task["manual_priority"] = True
+                drag_task["manual_order"] = order
+            st.session_state.parsed = parsed
+            save_parsed_notice(parsed, st.session_state.get("notice_text", parsed.get("raw_text", "")))
             st.session_state.plan = build_plan(parsed, available_minutes=available_minutes, days=7)
             st.session_state.started = False
             st.session_state.completed = False
