@@ -977,7 +977,6 @@ def reset_for_new_notice() -> None:
     st.session_state.completed = False
     st.session_state.stuck = False
     st.session_state.replan = None
-    st.session_state.remaining_minutes = 15
     st.session_state.current_record_id = None
     st.session_state.workspace_plan = None
     st.session_state.workspace_aggregated = None
@@ -1112,7 +1111,7 @@ def reset_guided() -> None:
     st.session_state.completed = False
     st.session_state.stuck = False
     st.session_state.replan = None
-    st.session_state.remaining_minutes = 15
+    st.session_state.start_bonus_awarded = False
     st.session_state.current_record_id = None
     st.session_state.workspace_plan = None
     st.session_state.workspace_aggregated = None

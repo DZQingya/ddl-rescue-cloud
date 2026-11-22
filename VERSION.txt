@@ -1,2 +1,2 @@
-v0.8.7-app-download
+v0.8.8-reset-fix
 
