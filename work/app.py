@@ -1281,20 +1281,17 @@ section = st.segmented_control(
     label_visibility="collapsed",
     width="stretch",
 )
-local_link_col, local_zip_col = st.columns([1.55, 1])
-with local_link_col:
-    st.link_button(
-        "想要更流畅？在你的 PC 本地部署",
-        "https://github.com/DZQingya/ddl-rescue-cloud/blob/main/LOCAL_DEPLOY.md",
+LOCAL_PACKAGE_PATH = Path(__file__).resolve().parents[1] / "downloads" / "DDL-guided-oneclick-v2-20261122.zip"
+if LOCAL_PACKAGE_PATH.exists():
+    st.download_button(
+        "想要更流畅？下载 PC 一键部署包",
+        data=LOCAL_PACKAGE_PATH.read_bytes(),
+        file_name="DDL-guided-oneclick-v2-20261122.zip",
+        mime="application/zip",
         use_container_width=True,
+        key="local_deploy_download",
     )
-with local_zip_col:
-    st.link_button(
-        "下载一键部署包",
-        "https://github.com/DZQingya/ddl-rescue-cloud/archive/refs/heads/main.zip",
-        use_container_width=True,
-    )
-st.caption("下载后解压，双击“一键部署.bat”。本地运行没有云端排队，数据留在自己的电脑。")
+    st.caption("下载后解压，双击“一键部署.bat”。不经过 GitHub，下载失败时请重试应用内按钮。")
 def switch_to_my_tasks() -> None:
     st.session_state.guided_section = "我的任务"
 
