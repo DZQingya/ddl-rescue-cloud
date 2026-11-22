@@ -320,6 +320,25 @@ def reopen_ddl(
     return update_ddl_status(record_id, ddl_id, "reopened", db_path)
 
 
+def delete_ddl_status(
+    record_id: str,
+    ddl_id: str,
+    db_path: str | Path | None = None,
+) -> bool:
+    """删除单个 DDL 的状态行，不触碰同一通知内的其他任务。"""
+    init_db(db_path)
+    connection = _connect(db_path)
+    try:
+        cursor = connection.execute(
+            "DELETE FROM ddl_statuses WHERE notice_id = ? AND ddl_id = ?",
+            (record_id, ddl_id),
+        )
+        connection.commit()
+        return cursor.rowcount > 0
+    finally:
+        connection.close()
+
+
 def delete_notice(record_id: str, db_path: str | Path | None = None) -> bool:
     init_db(db_path)
     connection = _connect(db_path)

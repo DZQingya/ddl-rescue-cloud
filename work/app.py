@@ -10,6 +10,7 @@ from streamlit_sortables import sort_items
 from team_scheduler.aggregate import aggregate_notifications
 from team_scheduler.replan import replan_plan
 from workspace_store import (
+    delete_ddl_status,
     delete_notice,
     get_ddl_status,
     list_ddl_statuses,
@@ -700,6 +701,40 @@ def _next_step_message(cards: list[dict], plan_stale: bool = False) -> str:
         return "下一步：所有 DDL 已完成，可以查看成果或删除旧通知。"
     return "下一步：查看卡住的 DDL，重新打开或重新生成计划。"
 
+def delete_ddl_task(record_id: str, ddl_id: str) -> None:
+    record = next((item for item in list_notices() if item.get("id") == record_id), None)
+    if not record:
+        return
+    parsed = deepcopy(record.get("parsed") or {})
+    remaining = [
+        item for item in parsed.get("ddl_items") or []
+        if isinstance(item, dict) and str(item.get("id") or "") != str(ddl_id)
+    ]
+    if not remaining:
+        delete_notice(record_id)
+    else:
+        parsed["ddl_items"] = remaining
+        parsed["deliverables"] = [str(item.get("title") or "任务") for item in remaining]
+        deadlines = [
+            item.get("deadline_iso") or (item.get("deadline") or {}).get("normalized")
+            for item in remaining
+        ]
+        deadlines = [value for value in deadlines if value]
+        parsed["deadline_iso"] = min(deadlines) if deadlines else None
+        parsed["schedule_ready"] = bool(deadlines)
+        if deadlines:
+            parsed["deadline"] = datetime.fromisoformat(parsed["deadline_iso"]).strftime("%Y-%m-%d %H:%M")
+        else:
+            parsed["deadline"] = "待确认"
+        save_notice(parsed, raw_text=record.get("raw_text"), record_id=record_id)
+        delete_ddl_status(record_id, ddl_id)
+    if st.session_state.get("current_record_id") == record_id and st.session_state.get("parsed"):
+        st.session_state.parsed = deepcopy(parsed)
+    st.session_state.workspace_plan_stale = True
+    st.session_state.workspace_delete_ddl_confirm = None
+    st.toast("任务已删除，其他任务保留")
+
+
 def load_record_for_edit(record_id: str) -> None:
     record = next((item for item in list_notices() if item.get("id") == record_id), None)
     if not record:
@@ -876,7 +911,7 @@ def render_workspace(draggable: bool = False) -> None:
         if target_level != current_target:
             item["target_level"] = target_level
             save_notice(record.get("parsed") or {}, raw_text=record.get("raw_text"), record_id=record["id"])
-        load_col, start_col, complete_col, stuck_col = st.columns([1.2, 1.0, 1.0, 1.0])
+        load_col, start_col, complete_col, stuck_col, delete_col = st.columns([1.2, 1.0, 1.0, 1.0, 0.8])
         with load_col:
             st.button(
                 "载入编辑",
@@ -912,39 +947,25 @@ def render_workspace(draggable: bool = False) -> None:
                 if st.button("我卡住了", key=f"workspace_stuck_{suffix}", use_container_width=True):
                     _apply_ddl_status(record, ddl_id, "stuck", card["has_ddl_row"])
                     st.rerun()
+        with delete_col:
+            if st.button("删除任务", key=f"workspace_delete_task_{suffix}", use_container_width=True):
+                st.session_state.workspace_delete_ddl_confirm = f"{record['id']}::{ddl_id}"
+                st.rerun()
 
-    st.info(_next_step_message(cards, st.session_state.get("workspace_plan_stale", False)))
-
-    st.markdown("#### 通知管理")
-    for record in records:
-        record_card_count = sum(
-            1 for item in cards if item["record"]["id"] == record["id"]
-        )
-        if st.button("删除", key=f"workspace_delete_{record['id']}", use_container_width=False):
-            st.session_state.delete_confirm_id = record["id"]
-            st.rerun()
-        if st.session_state.get("delete_confirm_id") == record["id"]:
-            st.warning(
-                f"确认删除“{record.get('title') or '未命名通知'}”？"
-                f"这条通知包含 {record_card_count} 个 DDL，删除后不可恢复。"
-            )
+        confirm_key = f"{record['id']}::{ddl_id}"
+        if st.session_state.get("workspace_delete_ddl_confirm") == confirm_key:
+            st.warning(f"确认删除任务“{item.get('title') or '未命名任务'}”？同一通知里的其他任务不会删除。")
             confirm_col, cancel_col = st.columns(2)
             with confirm_col:
-                if st.button("确认删除", key=f"workspace_delete_confirm_{record['id']}", use_container_width=True):
-                    delete_notice(record["id"])
-                    if st.session_state.get("workspace_plan") or st.session_state.get("workspace_aggregated"):
-                        st.session_state.workspace_plan_stale = True
-                    st.session_state.delete_confirm_id = None
-                    if st.session_state.get("current_record_id") == record["id"]:
-                        st.session_state.parsed = None
-                        st.session_state.plan = None
-                        st.session_state.current_record_id = None
-                    st.toast("已从通知工作台删除")
+                if st.button("确认删除任务", key=f"workspace_confirm_delete_task_{suffix}", use_container_width=True):
+                    delete_ddl_task(record["id"], ddl_id)
                     st.rerun()
             with cancel_col:
-                if st.button("取消删除", key=f"workspace_delete_cancel_{record['id']}", use_container_width=True):
-                    st.session_state.delete_confirm_id = None
+                if st.button("取消", key=f"workspace_cancel_delete_task_{suffix}", use_container_width=True):
+                    st.session_state.workspace_delete_ddl_confirm = None
                     st.rerun()
+
+    st.info(_next_step_message(cards, st.session_state.get("workspace_plan_stale", False)))
 
 
 def reset_for_new_notice() -> None:

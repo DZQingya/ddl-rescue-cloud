@@ -1,2 +1,2 @@
-v0.7.9-edit-levels
+v0.8.0-task-delete
 
