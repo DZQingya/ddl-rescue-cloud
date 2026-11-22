@@ -675,7 +675,7 @@ def _next_step_message(cards: list[dict], plan_stale: bool = False) -> str:
         return "下一步：所有 DDL 已完成，可以查看成果或删除旧通知。"
     return "下一步：查看卡住的 DDL，重新打开或重新生成计划。"
 
-def render_workspace() -> None:
+def render_workspace(draggable: bool = False) -> None:
     records = list_notices()
     if not records:
         st.markdown(
@@ -693,6 +693,66 @@ def render_workspace() -> None:
     )
     if expired_cards:
         st.caption(f"已跳过 {len(expired_cards)} 个过期 DDL；它们仍保留在工作台，请单独确认或删除。")
+
+    if draggable and cards:
+        saved_order = list(st.session_state.get("workspace_drag_order") or [])
+        if saved_order:
+            by_key = {f"{card['record']['id']}::{card['ddl_id']}": card for card in cards}
+            reordered = [by_key[key] for key in saved_order if key in by_key]
+            reordered.extend(card for card in cards if card not in reordered)
+            cards = reordered
+
+        labels: list[str] = []
+        label_to_card: dict[str, dict] = {}
+        counts: dict[str, int] = {}
+        for card in cards:
+            title = str(card["item"].get("title") or "未命名任务")
+            deadline = _format_ddl_deadline(card["item"])
+            base = f"{title} ｜ {deadline}"
+            count = counts.get(base, 0) + 1
+            counts[base] = count
+            label = base if count == 1 else f"{base} ｜ {card['record']['id']}:{card['ddl_id']}"
+            labels.append(label)
+            label_to_card[label] = card
+
+        st.markdown('<div class="task-list-title">拖动调整任务优先级</div><div class="task-list-hint">所有已保存 DDL 都在这里。越靠上越先做，拖动后今日主攻会同步变化。</div>', unsafe_allow_html=True)
+        sorted_labels = sort_items(
+            labels,
+            direction="vertical",
+            key="workspace_ddl_order_drag",
+            custom_style="""
+            .sortable-component { border:0; padding:0; background:transparent; }
+            .sortable-container, .sortable-container-body { background:transparent; padding:0; }
+            .sortable-item { background:#fff; border:1px solid #dbe4f0; border-radius:14px; padding:0 16px; margin:8px 0; min-height:56px; height:56px; display:flex; align-items:center; font-weight:800; color:#1e293b; cursor:grab; box-shadow:0 3px 12px rgba(15,23,42,.05); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; touch-action:none; user-select:none; }
+            .sortable-item.active:not(.dragging) { opacity:.30; }
+            .sortable-item.dragging { cursor:grabbing; opacity:1; box-shadow:0 14px 32px rgba(15,23,42,.18); }
+            """,
+        )
+        st.session_state.workspace_drag_order = [f"{label_to_card[label]['record']['id']}::{label_to_card[label]['ddl_id']}" for label in sorted_labels if label in label_to_card]
+        if sorted_labels != labels:
+            records_to_save: dict[str, dict] = {}
+            for card_order, label in enumerate(sorted_labels):
+                card = label_to_card.get(label)
+                if not card:
+                    continue
+                for task_index, task in enumerate(card["item"].get("tasks") or []):
+                    if not isinstance(task, dict):
+                        continue
+                    task["manual_priority"] = True
+                    task["manual_order"] = card_order * 100 + task_index
+                records_to_save[card["record"]["id"]] = card["record"]
+            for record in records_to_save.values():
+                save_notice(record.get("parsed") or {}, raw_text=record.get("raw_text"), record_id=record["id"])
+            ordered_cards = [label_to_card[x] for x in sorted_labels if x in label_to_card]
+            order_index = {f"{card['record']['id']}::{card['ddl_id']}": i for i, card in enumerate(ordered_cards)}
+            cards.sort(key=lambda card: order_index.get(f"{card['record']['id']}::{card['ddl_id']}", 9999))
+            for card in cards:
+                if card.get("display_status") == "primary":
+                    card["display_status"] = card["status"]
+            pending_cards = [card for card in cards if card["status"] == "pending" and not card["expired"]]
+            if pending_cards:
+                pending_cards[0]["display_status"] = "primary"
+            st.caption("顺序已更新：卡片顺序和今日主攻都已变化。")
 
     if st.button("生成全工作台今日计划", type="primary", use_container_width=True, key="workspace_aggregate"):
         notifications = []
@@ -995,6 +1055,20 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+if "guided_section" not in st.session_state:
+    st.session_state.guided_section = "急救流程"
+section = st.segmented_control(
+    "页面",
+    ["急救流程", "我的任务"],
+    key="guided_section",
+    label_visibility="collapsed",
+    width="stretch",
+)
+if section == "我的任务":
+    st.markdown('<div class="simple-kicker">我的任务</div><div class="simple-question">先做什么，由你决定</div><div class="simple-note">保存过的 DDL 都在下面；拖动排序后，今日主攻和计划顺序会一起更新。</div>', unsafe_allow_html=True)
+    render_workspace(draggable=True)
+    st.stop()
+
 render_steps(active_step)
 
 if active_step == 1:
@@ -1038,9 +1112,6 @@ if active_step == 1:
             st.text_input("模型名称", value=provider_defaults["model"], key="llm_model")
             st.text_input("API Key", value=provider_defaults["api_key"], type="password", key="llm_api_key")
             st.caption("调用失败会自动回退模拟解析，不会卡住流程。")
-
-    with st.expander("我保存过的任务（可选）"):
-        render_workspace()
 
 elif active_step == 2:
     parsed = st.session_state.parsed
