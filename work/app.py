@@ -30,13 +30,13 @@ APP_TIMEZONE = timezone(timedelta(hours=8))
 
 
 st.set_page_config(
-    page_title="DDL 急救站",
+    page_title="DDL 急救站 · 三步急救",
     page_icon="🚑",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-APP_VERSION = "v0.6.2-final-r2"
+APP_VERSION = "v0.7-guided"
 if st.session_state.get("app_version") != APP_VERSION:
     st.session_state.clear()
     st.session_state.app_version = APP_VERSION
@@ -855,438 +855,287 @@ def reset_for_new_notice() -> None:
     st.session_state.workspace_aggregated = None
 
 
+
 st.markdown(
     """
-<div class="hero">
-  <span class="badge">赛题 2 · AI 智能体 · MVP v0.6.2-final-r2</span>
-  <h1>DDL 急救站</h1>
-  <p>不是提醒你 DDL，而是帮你完成今天这一块。</p>
-</div>
+<style>
+[data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] {display:none !important;}
+[data-testid="stToolbar"], #MainMenu, footer {visibility:hidden;}
+.block-container {max-width: 760px; padding-top: .7rem !important;}
+.simple-hero {margin-bottom: .55rem !important; padding: 1rem 1.1rem !important; border-radius: 20px !important;}
+.simple-hero h1 {font-size: clamp(1.55rem, 7vw, 2.5rem) !important; line-height: 1.08 !important; margin-top: .5rem !important;}
+.simple-hero p {max-width: 680px; font-size: .92rem !important; line-height: 1.55 !important; margin-bottom: 0 !important;}
+.simple-steps {display:flex; gap:.4rem; margin:.5rem 0 .75rem;}
+.simple-step {flex:1; padding:.5rem .35rem; border-radius:12px; background:#eef2f7; color:#64748b; font-size:.76rem; font-weight:800; text-align:center; border:1px solid #e2e8f0;}
+.simple-step.active {background:#2563eb; color:white; border-color:#2563eb;}
+.simple-step.done {background:#dcfce7; color:#166534; border-color:#bbf7d0;}
+.simple-kicker {color:#2563eb; font-weight:900; letter-spacing:.08em; font-size:.78rem; margin-bottom:.25rem;}
+.simple-question {font-size:1.35rem; font-weight:900; color:#0f172a; margin:.15rem 0 .45rem;}
+.simple-note {color:#64748b; font-size:.88rem; margin-bottom:.55rem;}
+.simple-result {background:#fff; border:1px solid #dbeafe; border-radius:18px; padding:1rem 1.1rem; margin:.65rem 0;}
+.simple-result b {color:#0f172a;}
+.simple-result small {color:#64748b; display:block; margin-top:.25rem;}
+.simple-focus {background:linear-gradient(135deg,#0f172a,#1e3a8a); color:white; border-radius:24px; padding:1.35rem; margin:.7rem 0 1rem;}
+.simple-focus h2 {color:white !important; font-size:clamp(1.55rem, 6vw, 2.4rem); line-height:1.2; margin:.45rem 0;}
+.simple-focus p {color:#dbeafe; margin:.25rem 0;}
+.simple-focus .badge {background:rgba(255,255,255,.14); color:#bfdbfe;}
+@media (max-width: 520px) {
+  .block-container {padding-left:1rem; padding-right:1rem;}
+  .simple-steps {gap:.3rem;}
+  .simple-step {padding:.55rem .3rem; font-size:.72rem;}
+}
+</style>
 """,
     unsafe_allow_html=True,
 )
 
-with st.sidebar:
-    st.markdown("### 🚑 当前版本")
-    st.caption("MVP v0.6.2-final-r2 · 多DDL解析 + 团队规则 + 日期P0 + 排期可见")
-    st.markdown("### AI 工作流")
-    for index, step in enumerate(WORKFLOW_STEPS, start=1):
-        st.markdown(f"`{index:02d}` {step}")
-    st.divider()
-    st.markdown("### 模型解析")
-    provider_defaults = environment_defaults()
-    provider_mode = st.selectbox("解析方式", ["mock", "real"], format_func=lambda x: "模拟解析" if x == "mock" else "真实模型", key="provider_mode")
-    if provider_mode == "real":
-        st.caption("支持 OpenAI 兼容的 Chat Completions 接口。调用失败或返回无效结构时自动回退模拟解析。")
-        st.text_input("接口地址", value=provider_defaults["base_url"], key="llm_base_url", help="例如 https://api.openai.com/v1")
-        st.text_input("模型名称", value=provider_defaults["model"], key="llm_model")
-        st.text_input("API Key", value=provider_defaults["api_key"], type="password", key="llm_api_key")
-    else:
-        st.caption("当前使用本地规则模拟解析，不会调用外部服务。")
-    st.divider()
-    st.caption("默认使用模拟数据；真实截图请先脱敏。")
+provider_defaults = environment_defaults()
+provider_mode = st.session_state.get("provider_mode", "mock")
 
-tab_capture, tab_plan, tab_action = st.tabs(["① 捕获通知", "② 复核与计划", "③ 今日行动"])
 
-with tab_capture:
-    st.markdown("#### 我的工作区")
-    st.caption("保存多条通知，每条通知会拆成 DDL 卡；先载入已有通知，或在下方添加新通知。")
-    if st.session_state.pop("post_save_hint", False):
-        st.info("通知已保存。下一步：点上方“生成全工作台今日计划”，再选择一张 DDL 卡开始。")
-    render_workspace()
-    st.divider()
-    st.markdown("#### 添加一条新通知")
-    st.caption("贴文字即可；截图/PDF 解析是下一步。先验证：今日最小交付是否是一个真正可见的成果。")
+def guided_step() -> int:
+    if st.session_state.get("parsed") and st.session_state.get("plan"):
+        return 3
+    if st.session_state.get("parsed"):
+        return 2
+    return 1
 
-    sample_rows = [st.columns(2), st.columns(2)]
-    for index, case in enumerate(SAMPLE_CASES):
-        with sample_rows[index // 2][index % 2]:
-            if st.button(case["label"], use_container_width=True):
-                st.session_state.notice_text = case["text"]
-                st.session_state["available_minutes"] = case.get("demo_minutes", 120)
-                reset_for_new_notice()
-                st.rerun()
 
-    st.markdown(
-        '<div class="trust-banner"><b>只做计划和提醒：</b>不登录学习通 / 第二课堂等平台，不抓取账号，不代交作业。通知来自你粘贴的文字或截图。</div>',
-        unsafe_allow_html=True,
+def render_steps(active: int) -> None:
+    labels = [("1", "粘贴通知"), ("2", "生成计划"), ("3", "今天做")]
+    parts = []
+    for number, label in labels:
+        idx = int(number)
+        cls = "active" if idx == active else ("done" if idx < active else "")
+        parts.append(f'<div class="simple-step {cls}">{number} · {label}</div>')
+    st.markdown('<div class="simple-steps">' + "".join(parts) + "</div>", unsafe_allow_html=True)
+
+
+def reset_guided() -> None:
+    clear_editor_keys()
+    st.session_state.parsed = None
+    st.session_state.plan = None
+    st.session_state.started = False
+    st.session_state.completed = False
+    st.session_state.stuck = False
+    st.session_state.replan = None
+    st.session_state.remaining_minutes = 15
+    st.session_state.current_record_id = None
+    st.session_state.workspace_plan = None
+    st.session_state.workspace_aggregated = None
+    st.session_state.notice_text = ""
+
+
+def save_parsed_notice(parsed: dict, raw_text: str) -> str:
+    normalized_text = str(raw_text).strip()
+    existing = next(
+        (
+            item for item in list_notices()
+            if str(item.get("raw_text") or "").strip() == normalized_text
+            or (
+                str(item.get("title") or "").strip() == str(parsed.get("title") or "").strip()
+                and str(item.get("parsed", {}).get("deadline_iso") or "")
+                == str(parsed.get("deadline_iso") or "")
+            )
+        ),
+        None,
     )
-
-    st.text_area(
-        "通知 / 作业要求",
-        key="notice_text",
-        height=190,
-        placeholder="例如：数学分析第 3 次作业：完成习题 1-5，手写拍照上传，11月1日23:59前提交。",
+    saved = save_notice(
+        parsed,
+        raw_text=raw_text,
+        record_id=existing["id"] if existing else st.session_state.get("current_record_id"),
     )
+    st.session_state.current_record_id = saved["id"]
+    return saved["id"]
 
-    if st.button("开始解析", type="primary", use_container_width=True):
-        if not st.session_state.notice_text.strip():
-            st.warning("先粘贴一条通知。")
-        else:
-            with st.spinner("正在抽取截止时间、交付物和风险…"):
-                clear_editor_keys()
-                parsed, provider_label, fallback_reason = parse_notice(
-                    st.session_state.notice_text,
-                    mode=st.session_state.get("provider_mode", "mock"),
-                    base_url=st.session_state.get("llm_base_url", provider_defaults["base_url"]),
-                    api_key=st.session_state.get("llm_api_key", provider_defaults["api_key"]),
-                    model=st.session_state.get("llm_model", provider_defaults["model"]),
-                )
-                st.session_state.parsed = parsed
-                st.session_state.parser_provider = provider_label
-                st.session_state.parser_fallback_reason = fallback_reason
-                st.session_state.plan = None
-                st.session_state.started = False
-                st.session_state.completed = False
-                st.session_state.stuck = False
-                st.session_state.current_record_id = None
-                st.session_state["today_level"] = "保底"
-            st.toast("解析完成。请到第二页复核字段。")
 
-    if st.session_state.parsed:
-        p = st.session_state.parsed
-        st.caption(f"字段来源：{st.session_state.get('parser_provider', '模拟解析')} · 请在下一页复核模型抽取结果")
-        if st.session_state.get("parser_fallback_reason"):
-            st.warning(st.session_state.parser_fallback_reason)
-        multi_ddls = p.get("ddl_items") or []
-        if multi_ddls:
-            display_items = list(multi_ddls)
-        else:
-            display_items = [{
-                "id": "DDL1",
-                "title": p["title"],
-                "deadline_iso": p.get("deadline_iso"),
-                "tasks": [{"title": item} for item in p.get("deliverables", [])],
-            }]
-        display_items.sort(
-            key=lambda item: item.get("deadline_iso") or "9999-12-31T23:59:59"
+def run_parse(raw_text: str) -> None:
+    text = str(raw_text or "").strip()
+    if not text:
+        st.warning("先粘贴一条作业通知。")
+        return
+    with st.spinner("正在拆出截止任务和今天的第一步…"):
+        parsed, provider_label, fallback_reason = parse_notice(
+            text,
+            mode=st.session_state.get("provider_mode", "mock"),
+            base_url=st.session_state.get("llm_base_url", provider_defaults["base_url"]),
+            api_key=st.session_state.get("llm_api_key", provider_defaults["api_key"]),
+            model=st.session_state.get("llm_model", provider_defaults["model"]),
         )
-        st.markdown(
-            '<div class="board-heading"><h3>当前通知 DDL 预览</h3><span>保存后由上方工作台统一管理</span></div>',
-            unsafe_allow_html=True,
-        )
-        for item in display_items:
-            deadline_iso = item.get("deadline_iso")
-            if deadline_iso:
-                try:
-                    deadline_label = datetime.fromisoformat(deadline_iso).strftime("%m月%d日 %H:%M")
-                except ValueError:
-                    deadline_label = str(deadline_iso)
-            else:
-                deadline_label = "待确认"
-            status_text = "预览"
-            status_class = "pill-muted"
-            task_titles = "、".join(
-                str(task.get("title", "任务")) for task in item.get("tasks", [])
-            ) or "等待确认任务"
-            tags = ["通知提取", "多DDL" if len(display_items) > 1 else "单DDL"]
-            if p.get("scenario") == "冲突":
-                tags.append("需核对冲突")
-            tag_html = "".join(f'<span class="tag">{html.escape(tag)}</span>' for tag in tags)
-            st.markdown(
-                f"""
-<div class="ddl-card">
-  <div class="ddl-card-head">
-    <div><h4>{html.escape(str(item.get('title', '未命名 DDL')))}</h4>
-    <p>截止：{html.escape(deadline_label)}</p></div>
-    <span class="pill {status_class}">{status_text}</span>
-  </div>
-  <div class="tag-row">{tag_html}</div>
-  <p>AI 拆出的动作：{html.escape(task_titles)}</p>
-  <div class="ddl-action">下一步：进入「② 复核与计划」确认字段</div>
+        save_parsed_notice(parsed, text)
+    st.session_state.parsed = parsed
+    st.session_state.plan = None
+    st.session_state.started = False
+    st.session_state.completed = False
+    st.session_state.stuck = False
+    st.session_state.replan = None
+    st.session_state.provider_label = provider_label
+    st.session_state.fallback_reason = fallback_reason
+    st.rerun()
+
+
+active_step = guided_step()
+
+st.markdown(
+    """
+<div class="hero simple-hero">
+  <span class="badge">3 步完成今天的作业</span>
+  <h1>别想全部，先完成今天这一步。</h1>
+  <p>把钉钉或群里的作业通知粘进来，自动拆成截止任务，再给你一个今天能交付的结果。</p>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
-        if not display_items:
-            st.markdown(
-                '<div class="ddl-card"><div class="ddl-card-head"><h4>还没有可排期的 DDL</h4><span class="pill pill-warn">待确认</span></div><p>先补全通知里的截止时间，再生成计划。</p></div>',
-                unsafe_allow_html=True,
-            )
-        if p["risks"]:
-            st.warning("发现风险：" + "；".join(item["message"] for item in p["risks"]))
-        save_label = "更新到工作台" if st.session_state.get("current_record_id") else "保存到工作台"
-        if st.button(save_label, type="primary", use_container_width=True, key="save_current_notice"):
-            raw_text = st.session_state.get("notice_text", p.get("raw_text", ""))
-            record_id = st.session_state.get("current_record_id")
-            if not record_id:
-                # 防止用户重新解析同一条通知后再次保存，产生重复工作台记录。
-                normalized_text = str(raw_text).strip()
-                existing = next(
-                    (
-                        item for item in list_notices()
-                        if str(item.get("raw_text") or "").strip() == normalized_text
-                        or (
-                            str(item.get("title") or "").strip() == str(p.get("title") or "").strip()
-                            and str(item.get("parsed", {}).get("deadline_iso") or "")
-                            == str(p.get("deadline_iso") or "")
-                        )
-                    ),
-                    None,
-                )
-                record_id = existing["id"] if existing else None
-            saved = save_notice(
-                p,
-                raw_text=raw_text,
-                record_id=record_id,
-            )
-            st.session_state.current_record_id = saved["id"]
-            st.session_state.post_save_hint = True
-            if st.session_state.get("workspace_plan") or st.session_state.get("workspace_aggregated"):
-                st.session_state.workspace_plan_stale = True
-            st.toast("已保存到我的 DDL 工作台")
-            st.rerun()
+    unsafe_allow_html=True,
+)
+render_steps(active_step)
 
-with tab_plan:
-    if not st.session_state.parsed:
-        st.info("先在「① 捕获通知」里解析一条通知。")
-    else:
-        p = st.session_state.parsed
-        st.markdown("#### 字段复核：AI 可以错，你必须能改")
-        st.caption("每个字段都应能追溯原文；低置信度不要自动执行。")
+if active_step == 1:
+    st.markdown('<div class="simple-kicker">第 1 步</div><div class="simple-question">粘贴一条作业通知</div><div class="simple-note">不用整理格式，照原样复制即可。</div>', unsafe_allow_html=True)
+    st.text_area(
+        "作业通知",
+        key="notice_text",
+        height=135,
+        label_visibility="collapsed",
+        placeholder="例如：数学分析第 3 次作业，完成习题 1-5，11月25日23:59前提交。",
+    )
 
-        left, right = st.columns([2, 1])
-        with left:
-            st.text_input("标题", value=p["title"], key="title_input")
-            st.text_input("截止时间", value=p["deadline"], key="deadline_input")
-            st.text_area(
-                "交付物（一行一个）",
-                value="\n".join(p["deliverables"]),
-                key="deliverables_input",
-                height=110,
-            )
-            st.text_area(
-                "材料（一行一个）",
-                value="\n".join(p["materials"]),
-                key="materials_input",
-                height=90,
-            )
-        with right:
-            st.metric("抽取置信度", f"{p['confidence']:.0%}")
-            st.metric("风险数量", len(p["risks"]))
-            st.metric("场景", p["scenario"])
-            with st.expander("原文出处"):
-                for span in p["source_spans"]:
-                    st.caption(f"“{span}”")
+    def queue_demo() -> None:
+        demo = next((case for case in SAMPLE_CASES if case["id"] == "multi_ddl"), SAMPLE_CASES[0])
+        st.session_state.notice_text = demo["text"]
+        st.session_state["available_minutes"] = demo.get("demo_minutes", 120)
+        st.session_state.guided_demo_requested = True
 
-        if p["risks"]:
-            st.markdown("##### 风险提示")
-            for risk in p["risks"]:
-                fn = st.error if risk["severity"] == "high" else st.warning
-                fn(f"{risk['message']}（{risk['type']}）")
+    st.button(
+        "没有通知？点这里用示例体验",
+        use_container_width=True,
+        key="guided_demo",
+        on_click=queue_demo,
+    )
 
-        st.divider()
-        st.markdown("#### 排期参数")
-        available_minutes = st.slider(
-            "每天可用时间（分钟）",
-            min_value=30,
-            max_value=240,
-            value=120,
-            step=15,
-            key="available_minutes",
-            help="按你真实可投入的时间来，不要填理想状态。",
+    if st.button("开始急救", type="primary", use_container_width=True, key="guided_parse"):
+        run_parse(st.session_state.get("notice_text", ""))
+
+    if st.session_state.pop("guided_demo_requested", False):
+        run_parse(st.session_state.get("notice_text", ""))
+
+    with st.expander("高级设置：真实模型（通常不用改）"):
+        st.selectbox(
+            "解析方式",
+            ["mock", "real"],
+            format_func=lambda x: "模拟解析（推荐演示）" if x == "mock" else "真实模型",
+            key="provider_mode",
         )
-        days = st.slider("计划天数", min_value=3, max_value=14, value=7, step=1)
+        if st.session_state.get("provider_mode") == "real":
+            st.text_input("接口地址", value=provider_defaults["base_url"], key="llm_base_url")
+            st.text_input("模型名称", value=provider_defaults["model"], key="llm_model")
+            st.text_input("API Key", value=provider_defaults["api_key"], type="password", key="llm_api_key")
+            st.caption("调用失败会自动回退模拟解析，不会卡住流程。")
 
-        if st.button("生成计划与今日最小交付", type="primary", use_container_width=True):
-            edited = dict(p)
-            edited["title"] = st.session_state.get("title_input", p["title"])
-            edited["deadline"] = st.session_state.get("deadline_input", p["deadline"])
-            edited["deadline_iso"] = deadline_to_iso(edited["deadline"])
-            edited["deliverables"] = [
-                line.strip()
-                for line in st.session_state.get("deliverables_input", "").splitlines()
-                if line.strip()
-            ] or p["deliverables"]
-            edited["materials"] = [
-                line.strip()
-                for line in st.session_state.get("materials_input", "").splitlines()
-                if line.strip()
-            ] or p["materials"]
-            st.session_state.parsed = edited
-            st.session_state.plan = build_plan(edited, available_minutes=available_minutes, days=days)
+    with st.expander("我保存过的任务（可选）"):
+        render_workspace()
+
+elif active_step == 2:
+    parsed = st.session_state.parsed
+    items = parsed.get("ddl_items")
+    if not isinstance(items, list) or not items:
+        items = [{
+            "id": "DDL1",
+            "title": parsed.get("title") or "作业任务",
+            "deadline_iso": parsed.get("deadline_iso"),
+            "deadline": {"normalized": parsed.get("deadline_iso")} if parsed.get("deadline_iso") else None,
+        }]
+
+    st.markdown('<div class="simple-kicker">第 2 步</div><div class="simple-question">这次要完成什么？</div>', unsafe_allow_html=True)
+    st.caption(f"识别到 {len(items)} 个截止任务。先确认，再生成今天能做的计划。")
+    for item in items:
+        deadline_iso = item.get("deadline_iso") or (item.get("deadline") or {}).get("normalized")
+        try:
+            deadline_label = datetime.fromisoformat(str(deadline_iso)).strftime("%m月%d日 %H:%M") if deadline_iso else "待确认"
+        except ValueError:
+            deadline_label = str(deadline_iso)
+        st.markdown(
+            f'<div class="simple-result"><b>{html.escape(str(item.get("title") or "作业任务"))}</b><small>截止：{html.escape(deadline_label)}</small></div>',
+            unsafe_allow_html=True,
+        )
+
+    if parsed.get("risks"):
+        st.warning("有些信息需要人工确认：" + "；".join(str(risk.get("message") or "") for risk in parsed["risks"] if isinstance(risk, dict)))
+
+    st.markdown('<div class="simple-question" style="font-size:1.2rem;margin-top:1rem;">你每天大概能投入多久？</div>', unsafe_allow_html=True)
+    available_minutes = st.slider(
+        "每天可用时间",
+        min_value=30,
+        max_value=240,
+        value=int(st.session_state.get("available_minutes", 90)),
+        step=15,
+        label_visibility="collapsed",
+    )
+    st.session_state.available_minutes = available_minutes
+
+    col_back, col_plan = st.columns([1, 2])
+    with col_back:
+        if st.button("重新粘贴", use_container_width=True):
+            st.session_state.parsed = None
+            st.session_state.plan = None
+            st.rerun()
+    with col_plan:
+        if st.button("生成今日行动计划", type="primary", use_container_width=True):
+            st.session_state.plan = build_plan(parsed, available_minutes=available_minutes, days=7)
             st.session_state.started = False
             st.session_state.completed = False
             st.session_state.stuck = False
             st.session_state.replan = None
-            st.session_state.remaining_minutes = max(
-                5,
-                min(240, int(st.session_state.plan.get("today_minutes", 30)) // 2),
-            )
-            st.session_state["today_level"] = "保底"
-            st.toast("计划已生成。去第三页看今日最小交付。")
+            st.session_state.remaining_minutes = max(5, min(240, int(st.session_state.plan.get("today_minutes", 30)) // 2))
+            st.rerun()
 
-        if st.session_state.plan:
-            plan = normalize_plan(st.session_state.plan)
-            m1, m2, m3 = st.columns(3)
-            m1.metric("任务总时长", f"{plan['required_minutes']} 分钟")
-            m2.metric("计划可用时间", f"{plan['capacity_minutes']} 分钟")
-            m3.metric("本周可行", "是" if plan["feasible"] else "否")
-            engine = plan.get("scheduling_engine")
-            if engine == "team_scheduler":
-                engine_label = "团队确定性规则"
-            elif engine == "blocked":
-                engine_label = "已阻断：等待确认截止时间"
-            else:
-                engine_label = "兜底模拟规则"
-            st.caption(f"排期引擎：{engine_label}")
+    with st.expander("识别不对？查看原文和风险"):
+        st.text_area("原文", value=st.session_state.get("notice_text", ""), height=150, disabled=True)
+        if st.session_state.get("fallback_reason"):
+            st.caption(str(st.session_state.fallback_reason))
 
-            if not plan["feasible"]:
-                st.error(plan["conflict_message"])
-            else:
-                st.success("本周容量可行。先完成今日最小交付，不追求一次做完。")
-            if plan.get("unscheduled_tasks"):
-                st.warning(plan.get("deferred_message"))
+else:
+    parsed = st.session_state.parsed
+    plan = normalize_plan(st.session_state.plan)
+    level = plan["today_levels"]["minimum"]
 
-            st.markdown("#### 每日排期")
-            if plan.get("plan_days"):
-                for index, day in enumerate(plan["plan_days"]):
-                    day_tasks = day.get("tasks", [])
-                    titles = "、".join(html.escape(task["title"]) for task in day_tasks)
-                    date_text = html.escape(str(day.get("date", "")))
-                    day_label = "今天" if index == 0 else f"第 {index + 1} 天"
-                    date_suffix = f" · {date_text}" if date_text else ""
-                    st.markdown(
-                        f"""
-<div class="card">
-  <h4>{day_label}{date_suffix}</h4>
-  <p>{day.get('minutes', 0)} 分钟 · {len(day_tasks)} 个任务</p>
-  <p>{titles}</p>
-</div>
-""",
-                        unsafe_allow_html=True,
-                    )
-            else:
-                st.info("暂无可排期日期。先确认截止时间。")
-
-            st.markdown("#### 任务拆解")
-            for task in plan["tasks"]:
-                st.markdown(
-                    f"""
-<div class="task">
-  <b>{html.escape(task['title'])}</b><small>{task['minutes']} 分钟 · {html.escape(task['tag'])}</small>
-  <p>启动动作：{html.escape(task['warm_start'])}</p>
-  <p>完成标准：{html.escape(task['done_definition'])}</p>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
-
-            st.markdown(
-                f"""
-<div class="big-first">
-  <span class="badge">今日保底 · 最小交付</span>
-  <h2>{html.escape(plan['today_deliverable'])}</h2>
-  <p>预计 {plan['today_minutes']} 分钟 · 启动动作：{html.escape(plan['today_warm_start'])}</p>
-  <p style="margin-top:.55rem;color:#166534;">完成标准：{html.escape(plan['today_done_definition'])}</p>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-
-            st.markdown("#### 今日三层目标")
-            st.caption("完成保底就算赢；有余力再进阶或挑战。")
-            level_meta = [
-                ("minimum", "保底", "level-minimum", "#166534", "#dcfce7"),
-                ("standard", "进阶", "level-standard", "#1d4ed8", "#dbeafe"),
-                ("stretch", "挑战", "level-stretch", "#92400e", "#fef3c7"),
-            ]
-            level_cols = st.columns(len(SAMPLE_CASES))
-            for col, (key, tag, css_class, color, bg) in zip(level_cols, level_meta):
-                level = plan["today_levels"][key]
-                with col:
-                    st.markdown(
-                        f"""
-<div class="level-card {css_class}">
-  <span class="level-tag" style="background:{bg};color:{color};">{tag}</span>
-  <h4>{html.escape(level['deliverable'])}</h4>
-  <p>预计 {level['minutes']} 分钟</p>
-  <p>完成标准：{html.escape(level['done_definition'])}</p>
-</div>
-""",
-                        unsafe_allow_html=True,
-                    )
-
-with tab_action:
-    if not st.session_state.plan:
-        st.info("先在「② 复核与计划」里生成计划。")
-    else:
-        p = st.session_state.parsed
-        plan = normalize_plan(st.session_state.plan)
-        st.markdown("#### 今天完成这一块")
-        selected_label = st.radio(
-            "今天的目标层次",
-            ["保底", "进阶", "挑战"],
-            horizontal=True,
-            key="today_level",
-        )
-        level_key = {"保底": "minimum", "进阶": "standard", "挑战": "stretch"}[selected_label]
-        level = plan["today_levels"][level_key]
-        encouragement = {
-            "保底": "完成保底就已经赢过昨天的自己。",
-            "进阶": "保底完成后，再花 5 分钟检查一下。",
-            "挑战": "有余力再挑战；完不成也不影响保底。",
-        }
-        st.caption(encouragement[selected_label])
-        if not st.session_state.stuck:
-            st.markdown(
-                f"""
-<div class="big-first">
-  <span class="badge">今日目标 · {selected_label}</span>
-  <h2>{html.escape(level['deliverable'])}</h2>
-  <p>预计 {level['minutes']} 分钟 · 有可见成果，不是“打开文件”这种启动动作</p>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
+    st.markdown('<div class="simple-kicker">第 3 步</div><div class="simple-question">今天只做这一块</div>', unsafe_allow_html=True)
+    if st.session_state.completed:
+        st.success("今天这一块已经完成。完成比完美重要。")
         st.markdown(
-            f"""
-<div class="card">
-  <h4>启动动作（不单独估时）</h4>
-  <p>{html.escape(plan['today_warm_start'])}</p>
-</div>
-<div class="card">
-  <h4>完成标准</h4>
-  <p>{html.escape(level['done_definition'])}</p>
-</div>
-""",
+            f'<div class="simple-focus"><span class="badge">已完成</span><h2>{html.escape(level["deliverable"])}</h2><p>预计 {level["minutes"]} 分钟</p></div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f'<div class="simple-focus"><span class="badge">今日最小交付</span><h2>{html.escape(level["deliverable"])}</h2><p>预计 {level["minutes"]} 分钟 · 截止 {html.escape(str(parsed.get("deadline") or "待确认"))}</p></div>',
             unsafe_allow_html=True,
         )
 
+    with st.expander("开始前看这里"):
+        st.markdown(f"**第一步：** {html.escape(plan['today_warm_start'])}")
+        st.markdown(f"**完成标准：** {html.escape(level['done_definition'])}")
+
+    if not st.session_state.completed:
         c1, c2, c3 = st.columns(3)
-        if c1.button("我开始了", type="primary", use_container_width=True):
+        if c1.button("开始 / 继续", type="primary", use_container_width=True):
             st.session_state.started = True
             st.session_state.stuck = False
             st.session_state.replan = None
-            st.toast("先做启动动作，然后完成这一块。")
+            st.rerun()
         if c2.button("我完成了", use_container_width=True):
             st.session_state.completed = True
             st.session_state.stuck = False
-            st.session_state.replan = None
-            st.toast(f"完成{selected_label}目标！")
             st.balloons()
-        stuck_clicked = c3.button(
-            "我卡住了",
-            use_container_width=True,
-            disabled=st.session_state.completed,
-        )
-        if stuck_clicked:
+            st.rerun()
+        if c3.button("我卡住了", use_container_width=True):
             st.session_state.stuck = True
             st.rerun()
 
-        progress = 100 if st.session_state.completed else (35 if st.session_state.started else 0)
-        st.progress(progress, text=f"今日进度：{progress}% · 目标：{selected_label}")
+        if st.session_state.get("started") and not st.session_state.get("stuck"):
+            st.progress(45, text="已经开始了，继续完成这一块")
 
-        if st.session_state.completed:
-            st.success("今天这一块已完成，卡住入口已关闭。")
-        elif st.session_state.stuck:
-            remaining = st.slider(
-                "现在还剩多少分钟？",
-                min_value=0,
-                max_value=240,
-                step=5,
-                key="remaining_minutes",
-            )
+        if st.session_state.get("stuck"):
+            st.warning("先缩小范围，不要求一次做完。")
+            remaining = st.slider("现在还剩多少分钟？", min_value=5, max_value=240, step=5, key="remaining_minutes")
             replanned = replan_plan(
                 plan,
                 completed_tasks=[],
@@ -1294,81 +1143,42 @@ with tab_action:
                 current_time=datetime.now(APP_TIMEZONE),
             )
             st.session_state.replan = replanned
-            st.warning("已按当前剩余时间重新排过，不是只给建议。")
-            after_minutes = sum(
-                int(task.get("estimate_min") or task.get("minutes") or 0)
-                for task in replanned["today_tasks"]
-            )
-            st.caption(
-                f"原计划今日 {plan.get('today_minutes', 0)} 分钟 → "
-                f"重排后 {after_minutes} 分钟 · 剩余 {remaining} 分钟"
-            )
-            if replanned["today_tasks"]:
+            if replanned.get("today_tasks"):
                 primary = replanned["today_tasks"][0]
                 primary_minutes = int(primary.get("estimate_min") or primary.get("minutes") or 0)
                 st.markdown(
-                    f"""
-<div class="big-first">
-  <span class="badge">今日目标 · 重排后</span>
-  <h2>{html.escape(str(primary.get('title', '任务')))}</h2>
-  <p>预计 {primary_minutes} 分钟 · 已完成重排</p>
-</div>
-""",
+                    f'<div class="simple-focus"><span class="badge">缩小后只做这个</span><h2>{html.escape(str(primary.get("title") or "任务"))}</h2><p>预计 {primary_minutes} 分钟</p></div>',
                     unsafe_allow_html=True,
                 )
-                st.markdown("#### 重排后的今日任务")
-                for task in replanned["today_tasks"]:
-                    minutes = int(task.get("estimate_min") or task.get("minutes") or 0)
-                    reduced = " · 已缩小范围" if task.get("scope_reduced") else ""
-                    st.markdown(f"- **{html.escape(str(task.get('title', '任务')))}** · {minutes} 分钟{reduced}")
-            if replanned["unscheduled_tasks"]:
-                st.error("这些任务当前放不下：" + "、".join(str(task.get("title", "任务")) for task in replanned["unscheduled_tasks"]))
-            if replanned["actions"]:
-                st.info("下一步可选：" + " / ".join(replanned["actions"]))
-            st.caption(replanned["message"])
-        if st.session_state.stuck and st.session_state.replan:
-            st.markdown("#### 仍然卡住时")
-            for option in plan["rescue_options"]:
-                st.markdown(
-                    f"""
-<div class="card">
-  <h4>{html.escape(option['label'])}</h4>
-  <p>{html.escape(option['description'])}</p>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
+            if replanned.get("unscheduled_tasks"):
+                st.error("这些内容今天放不下：" + "、".join(str(task.get("title") or "任务") for task in replanned["unscheduled_tasks"]))
+            if replanned.get("actions"):
+                st.info("可以这样处理：" + " / ".join(replanned["actions"]))
 
-        st.divider()
-        st.markdown("#### 把行动带走")
-        ics = generate_ics(p)
-        download_col, copy_col = st.columns([1, 2])
-        with download_col:
-            if ics:
-                st.download_button(
-                    "下载 .ics 日历",
-                    data=ics.encode("utf-8"),
-                    file_name="ddl-rescue.ics",
-                    mime="text/calendar",
-                    use_container_width=True,
-                )
-            else:
-                st.info("截止时间未确认，暂不生成日历。")
-        with copy_col:
-            action_card = (
-                f"DDL 急救站｜今日目标：{selected_label}\n"
-                f"{level['deliverable']}\n\n"
-                f"预计：{level['minutes']} 分钟\n"
-                f"启动动作：{plan['today_warm_start']}\n"
-                f"完成标准：{level['done_definition']}\n"
-                f"截止：{p['deadline']}"
+    if not st.session_state.completed:
+        with st.expander("还有余力？再做这些"):
+            standard = plan["today_levels"]["standard"]
+            stretch = plan["today_levels"]["stretch"]
+            st.markdown(f"**进阶：** {html.escape(standard['deliverable'])} · {standard['minutes']} 分钟")
+            st.markdown(f"**挑战：** {html.escape(stretch['deliverable'])} · {stretch['minutes']} 分钟")
+
+    with st.expander("每日排期与日历"):
+        for index, day in enumerate(plan.get("plan_days", [])):
+            day_tasks = day.get("tasks", []) if isinstance(day, dict) else []
+            titles = "、".join(str(task.get("title") or "") for task in day_tasks) or "无任务"
+            label = "今天" if index == 0 else f"第 {index + 1} 天"
+            st.caption(f"{label}：{titles}")
+        ics = generate_ics(parsed)
+        if ics:
+            st.download_button(
+                "下载 .ics 日历",
+                data=ics.encode("utf-8"),
+                file_name="ddl-rescue.ics",
+                mime="text/calendar",
+                use_container_width=True,
             )
-            st.text_area("复制给自己 / 发给同学", action_card, height=120)
 
-        st.divider()
-        st.markdown("#### 工作流复盘")
-        st.markdown(
-            '<div class="workflow">' + "".join(f"<span>{step}</span>" for step in p["workflow"]) + "</div>",
-            unsafe_allow_html=True,
-        )
-        st.caption("通知抽取支持真实模型与模拟解析；排期和可行性判断仍由确定性规则完成。")
+    st.divider()
+    if st.button("换一条通知，重新开始", use_container_width=True):
+        reset_guided()
+        st.rerun()
