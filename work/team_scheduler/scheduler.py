@@ -16,6 +16,8 @@ PLANNING_WINDOW_DAYS = 7
 
 LEVEL_ORDER = {"minimum": 0, "advanced": 1, "challenge": 2}
 LEVEL_BONUS = {"minimum": 30, "advanced": 10, "challenge": 0}
+PRIORITY_ORDER = {"high": 0, "normal": 1, "low": 2}
+PRIORITY_BONUS = {"high": 20, "normal": 0, "low": -10}
 # 兼容旧数据；新 Schema 与新案例统一使用 advanced/challenge。
 LEVEL_ALIASES = {"standard": "advanced", "stretch": "challenge"}
 DEADLINE_CONFIDENCE_THRESHOLD = 0.70
@@ -300,8 +302,10 @@ def calc_priority(tasks: list[dict[str, Any]], deadline_iso: str) -> list[dict[s
             estimate = 0
         estimate = max(0, int(estimate))
         level = _canonical_level(item.get("level", "advanced"))
+        manual_priority = str(item.get("priority") or "normal").lower()
+        priority_bonus = PRIORITY_BONUS.get(manual_priority, 0) if item.get("manual_priority") else 0
         item["priority_score"] = round(
-            0.6 * urgency + 0.4 * _duration_score(estimate) + LEVEL_BONUS.get(level, 0),
+            0.6 * urgency + 0.4 * _duration_score(estimate) + LEVEL_BONUS.get(level, 0) + priority_bonus,
             2,
         )
         scored.append(item)
@@ -313,8 +317,11 @@ def _task_sort_key(task: dict[str, Any]) -> tuple[Any, ...]:
     level = _canonical_level(task.get("level", "advanced"))
     deadline_iso = _task_deadline(task)
     deadline_timestamp = _parse_deadline(deadline_iso).timestamp() if deadline_iso else float("inf")
+    manual_priority = str(task.get("priority") or "normal").lower()
+    priority_rank = PRIORITY_ORDER.get(manual_priority, 1)
     return (
         LEVEL_ORDER.get(level, 1),
+        priority_rank if task.get("manual_priority") else 1,
         deadline_timestamp,
         -float(task.get("priority_score", 0)),
         -max(0, int(task.get("estimate_min", 0) or 0)),

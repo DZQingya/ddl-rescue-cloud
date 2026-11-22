@@ -371,7 +371,13 @@ def deadline_to_iso(value: str) -> str | None:
             return datetime.strptime(value, fmt).replace(tzinfo=APP_TIMEZONE).isoformat()
         except ValueError:
             continue
-    return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=APP_TIMEZONE)
+        return parsed.astimezone(APP_TIMEZONE).isoformat()
+    except ValueError:
+        return None
 
 
 def normalize_plan(plan: dict) -> dict:
@@ -1052,13 +1058,125 @@ elif active_step == 2:
             deadline_label = datetime.fromisoformat(str(deadline_iso)).strftime("%m月%d日 %H:%M") if deadline_iso else "待确认"
         except ValueError:
             deadline_label = str(deadline_iso)
+        tasks = item.get("tasks") or []
+        task_summary = "；".join(
+            f'{task.get("title") or "任务"}（{ {"high": "高", "normal": "普通", "low": "低"}.get(str(task.get("priority") or "normal"), "普通") }）'
+            for task in tasks if isinstance(task, dict)
+        ) or "尚未拆出任务"
         st.markdown(
-            f'<div class="simple-result"><b>{html.escape(str(item.get("title") or "作业任务"))}</b><small>截止：{html.escape(deadline_label)}</small></div>',
+            f'<div class="simple-result"><b>{html.escape(str(item.get("title") or "作业任务"))}</b><small>截止：{html.escape(deadline_label)}</small><small>任务：{html.escape(task_summary)}</small></div>',
             unsafe_allow_html=True,
         )
 
     if parsed.get("risks"):
         st.warning("有些信息需要人工确认：" + "；".join(str(risk.get("message") or "") for risk in parsed["risks"] if isinstance(risk, dict)))
+
+    with st.expander("修改识别结果：通知、截止时间、任务、优先级", expanded=False):
+        with st.form("guided_edit_form"):
+            edited_items = deepcopy(items)
+            for ddl_index, edit_item in enumerate(edited_items):
+                st.markdown(f"**截止任务 {ddl_index + 1}**")
+                edit_item["title"] = st.text_input(
+                    "任务名称",
+                    value=str(edit_item.get("title") or "作业任务"),
+                    key=f"guided_ddl_title_{ddl_index}",
+                )
+                current_iso = edit_item.get("deadline_iso") or (edit_item.get("deadline") or {}).get("normalized")
+                current_deadline = ""
+                if current_iso:
+                    try:
+                        current_deadline = datetime.fromisoformat(str(current_iso)).strftime("%Y-%m-%d %H:%M")
+                    except ValueError:
+                        current_deadline = str(current_iso)
+                edit_item["_edit_deadline"] = st.text_input(
+                    "截止时间（YYYY-MM-DD HH:MM）",
+                    value=current_deadline,
+                    key=f"guided_ddl_deadline_{ddl_index}",
+                )
+                edit_tasks = edit_item.get("tasks") or []
+                for task_index, edit_task in enumerate(edit_tasks):
+                    if not isinstance(edit_task, dict):
+                        continue
+                    st.caption(f"任务 {ddl_index + 1}.{task_index + 1}")
+                    edit_task["title"] = st.text_input(
+                        "任务内容",
+                        value=str(edit_task.get("title") or "任务"),
+                        key=f"guided_task_title_{ddl_index}_{task_index}",
+                    )
+                    edit_task["minutes"] = int(st.number_input(
+                        "预计分钟",
+                        min_value=5,
+                        max_value=240,
+                        value=int(edit_task.get("minutes") or edit_task.get("estimate_min") or 30),
+                        step=5,
+                        key=f"guided_task_minutes_{ddl_index}_{task_index}",
+                    ))
+                    edit_task["priority"] = st.selectbox(
+                        "优先级",
+                        ["high", "normal", "low"],
+                        index=["high", "normal", "low"].index(str(edit_task.get("priority") or "normal"))
+                        if str(edit_task.get("priority") or "normal") in ["high", "normal", "low"] else 1,
+                        format_func=lambda value: {"high": "高", "normal": "普通", "low": "低"}[value],
+                        key=f"guided_task_priority_{ddl_index}_{task_index}",
+                    )
+                    edit_task["manual_priority"] = True
+            apply_edits = st.form_submit_button("保存修改", type="primary", use_container_width=True)
+
+        if apply_edits:
+            valid = True
+            valid_items = []
+            for edit_item in edited_items:
+                deadline_text = str(edit_item.pop("_edit_deadline", "") or "").strip()
+                iso = deadline_to_iso(deadline_text)
+                if not iso:
+                    st.error(f"“{edit_item.get('title') or '任务'}”的截止时间格式不对，请用 YYYY-MM-DD HH:MM。")
+                    valid = False
+                    continue
+                edit_item["deadline_iso"] = iso
+                edit_item["deadline"] = {"normalized": iso, "raw": deadline_text, "confidence": 1.0, "source_span": deadline_text}
+                for edit_task in edit_item.get("tasks") or []:
+                    if not isinstance(edit_task, dict):
+                        continue
+                    minutes = int(edit_task.get("minutes") or 30)
+                    edit_task["estimate_min"] = minutes
+                    levels = edit_task.setdefault("levels", {})
+                    minimum = levels.setdefault("minimum", {"label": "保底", "deliverable": edit_task.get("title") or "任务", "minutes": minutes, "done_definition": f"{edit_task.get('title') or '任务'}已有可见成果。"})
+                    minimum["deliverable"] = edit_task.get("title") or minimum.get("deliverable") or "任务"
+                    minimum["minutes"] = minutes
+                    for level_name in ("standard", "stretch"):
+                        level = levels.get(level_name)
+                        if isinstance(level, dict):
+                            level["minutes"] = max(int(level.get("minutes") or minutes), minutes)
+                valid_items.append(edit_item)
+            if valid and len(valid_items) == len(edited_items):
+                parsed["ddl_items"] = valid_items
+                parsed["deliverables"] = [str(item.get("title") or "任务") for item in valid_items]
+                deadlines = [item.get("deadline_iso") for item in valid_items if item.get("deadline_iso")]
+                parsed["deadline_iso"] = min(deadlines) if deadlines else None
+                if parsed["deadline_iso"]:
+                    parsed["deadline"] = datetime.fromisoformat(parsed["deadline_iso"]).strftime("%Y-%m-%d %H:%M")
+                else:
+                    parsed["deadline"] = "待确认"
+                parsed["schedule_ready"] = bool(parsed["deadline_iso"])
+                st.session_state.parsed = parsed
+                save_parsed_notice(parsed, st.session_state.get("notice_text", parsed.get("raw_text", "")))
+                st.toast("识别结果已更新")
+                st.rerun()
+
+    with st.expander("修改原文并重新识别"):
+        edited_raw = st.text_area(
+            "通知原文",
+            value=st.session_state.get("notice_text", parsed.get("raw_text", "")),
+            height=150,
+            key="guided_raw_edit",
+        )
+        def queue_raw_reparse() -> None:
+            st.session_state.notice_text = st.session_state.get("guided_raw_edit", "")
+            st.session_state.guided_raw_requested = True
+
+        st.button("重新解析原文", use_container_width=True, on_click=queue_raw_reparse)
+        if st.session_state.pop("guided_raw_requested", False):
+            run_parse(st.session_state.get("notice_text", ""))
 
     st.markdown('<div class="simple-question" style="font-size:1.2rem;margin-top:1rem;">你每天大概能投入多久？</div>', unsafe_allow_html=True)
     available_minutes = st.slider(
@@ -1095,9 +1213,16 @@ elif active_step == 2:
 else:
     parsed = st.session_state.parsed
     plan = normalize_plan(st.session_state.plan)
-    level = plan["today_levels"]["minimum"]
-
     st.markdown('<div class="simple-kicker">第 3 步</div><div class="simple-question">今天只做这一块</div>', unsafe_allow_html=True)
+    selected_label = st.radio(
+        "今天的目标层次",
+        ["保底", "进阶", "挑战"],
+        horizontal=True,
+        key="guided_today_level",
+        help="先完成保底；有余力再切到进阶或挑战。",
+    )
+    level_key = {"保底": "minimum", "进阶": "standard", "挑战": "stretch"}[selected_label]
+    level = plan["today_levels"][level_key]
     if st.session_state.completed:
         st.success("今天这一块已经完成。完成比完美重要。")
         st.markdown(
@@ -1154,13 +1279,6 @@ else:
                 st.error("这些内容今天放不下：" + "、".join(str(task.get("title") or "任务") for task in replanned["unscheduled_tasks"]))
             if replanned.get("actions"):
                 st.info("可以这样处理：" + " / ".join(replanned["actions"]))
-
-    if not st.session_state.completed:
-        with st.expander("还有余力？再做这些"):
-            standard = plan["today_levels"]["standard"]
-            stretch = plan["today_levels"]["stretch"]
-            st.markdown(f"**进阶：** {html.escape(standard['deliverable'])} · {standard['minutes']} 分钟")
-            st.markdown(f"**挑战：** {html.escape(stretch['deliverable'])} · {stretch['minutes']} 分钟")
 
     with st.expander("每日排期与日历"):
         for index, day in enumerate(plan.get("plan_days", [])):
