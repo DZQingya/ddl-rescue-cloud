@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 data/workspace.db
+data/llm_settings.json
 .streamlit/secrets.toml
 .env
 .DS_Store

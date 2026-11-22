@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import html
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 import streamlit as st
 from streamlit_sortables import sort_items
 
+import llm_settings
 from team_scheduler.aggregate import aggregate_notifications
 from team_scheduler.replan import replan_plan
 from workspace_store import (
@@ -23,10 +24,13 @@ from workspace_store import (
 from mock_engine import (
     SAMPLE_CASES,
     WORKFLOW_STEPS,
+    build_ddl_item,
     build_plan,
     generate_ics,
 )
-from model_provider import environment_defaults, parse_notice
+from deadline_tools import apply_manual_deadline, dt_from_iso, item_deadline_iso
+from model_provider import parse_notice
+from model_provider import test_connection as test_llm_connection
 
 
 APP_TIMEZONE = timezone(timedelta(hours=8))
@@ -39,7 +43,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-APP_VERSION = "v0.7-guided"
+APP_VERSION = "v0.9.1-sync-apk"
 if st.session_state.get("app_version") != APP_VERSION:
     st.session_state.clear()
     st.session_state.app_version = APP_VERSION
@@ -1027,10 +1031,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-provider_defaults = environment_defaults()
-provider_mode = st.session_state.get("provider_mode", "mock")
-
-
 def guided_step() -> int:
     if st.session_state.get("parsed") and st.session_state.get("plan"):
         return 3
@@ -1160,13 +1160,17 @@ def run_parse(raw_text: str, *, reset_statuses: bool = False) -> None:
     if not text:
         st.warning("先粘贴一条作业通知。")
         return
-    with st.spinner("正在拆出截止任务和今天的第一步…"):
+    config = llm_settings.load()
+    spinner_text = "正在拆出截止任务和今天的第一步…" if config["enabled"] else "正在用本地规则拆出截止任务…"
+    with st.spinner(spinner_text):
         parsed, provider_label, fallback_reason = parse_notice(
             text,
-            mode=st.session_state.get("provider_mode", "mock"),
-            base_url=st.session_state.get("llm_base_url", provider_defaults["base_url"]),
-            api_key=st.session_state.get("llm_api_key", provider_defaults["api_key"]),
-            model=st.session_state.get("llm_model", provider_defaults["model"]),
+            mode="real" if config["enabled"] else "mock",
+            base_url=config["base_url"],
+            api_key=config["api_key"],
+            model=config["model"],
+            timeout=config["timeout"],
+            extra=config["extra"],
         )
         save_parsed_notice(parsed, text, reset_statuses=reset_statuses)
     st.session_state.parsed = parsed
@@ -1178,6 +1182,151 @@ def run_parse(raw_text: str, *, reset_statuses: bool = False) -> None:
     st.session_state.provider_label = provider_label
     st.session_state.fallback_reason = fallback_reason
     st.rerun()
+
+
+def render_settings() -> None:
+    """设置页：大模型配置 + 测试连接 + 运行信息（对齐手机端 v1.1 的设置页）。"""
+    config = llm_settings.load()
+
+    st.markdown(
+        '<div class="simple-kicker">设置</div><div class="simple-question">要不要让大模型来读通知</div>'
+        '<div class="simple-note">关掉时完全不联网，只用本地确定性规则；打开后通知原文会发送到你填的模型服务，'
+        '解析失败会自动回退本地规则。</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.container(border=True):
+        enabled = st.toggle(
+            "用大模型解析通知",
+            value=bool(config["enabled"]),
+            key="llm_enabled",
+            help="能补上规则漏掉的口语化截止时间。连不上会自动回退，不会卡住流程。",
+        )
+        st.caption("关闭 = 本地规则引擎，不需要 Key、不上传原文。")
+
+        if enabled:
+            preview_config = {
+                "base_url": st.session_state.get("llm_base_url", config["base_url"]),
+                "model": st.session_state.get("llm_model", config["model"]),
+            }
+            current_preset = llm_settings.match_preset(preview_config)
+            st.markdown("**常用服务商**")
+            preset_cols = st.columns(4)
+            for index, preset in enumerate(llm_settings.PRESETS):
+                picked = bool(current_preset and current_preset["id"] == preset["id"])
+                if preset_cols[index % 4].button(
+                    ("✓ " if picked else "") + preset["name"],
+                    key=f"preset_{preset['id']}",
+                    use_container_width=True,
+                ):
+                    st.session_state["llm_base_url"] = preset["base_url"]
+                    st.session_state["llm_model"] = preset["model"]
+                    st.rerun()
+            st.caption("点一下自动填好地址和模型，只剩 API Key 要自己粘。本机或局域网的模型不用 Key。")
+
+            col_url, col_model = st.columns([2, 1])
+            col_url.text_input(
+                "接口地址",
+                value=config["base_url"],
+                key="llm_base_url",
+                placeholder="https://api.deepseek.com/v1",
+                help="填到 /v1 就行，会自动补 /chat/completions。",
+            )
+            col_model.text_input(
+                "模型名",
+                value=config["model"],
+                key="llm_model",
+                placeholder="deepseek-chat",
+            )
+            st.text_input(
+                "API Key",
+                value=config["api_key"],
+                key="llm_api_key",
+                type="password",
+                placeholder="sk-...",
+                help="只存在这台机器的 data/llm_settings.json 里。",
+            )
+            col_timeout, col_extra = st.columns([1, 2])
+            col_timeout.number_input(
+                "超时（秒）",
+                min_value=15,
+                max_value=180,
+                value=int(config["timeout"]),
+                step=15,
+                key="llm_timeout",
+            )
+            col_extra.text_input(
+                "额外要求（可选）",
+                value=config["extra"],
+                key="llm_extra",
+                placeholder="例：我们周三交实验报告，时间是 18:00",
+            )
+            st.caption(
+                "兼容 OpenAI 风格接口：DeepSeek、Kimi、通义、OpenAI 都能用；"
+                "本机或局域网的 Ollama / LM Studio 填 http://192.168.1.5:11434/v1，不用填 Key。"
+            )
+
+        col_test, col_save = st.columns(2)
+        test_clicked = col_test.button(
+            "测试连接",
+            use_container_width=True,
+            disabled=not enabled,
+            key="llm_test_button",
+        )
+        save_clicked = col_save.button(
+            "保存设置",
+            type="primary",
+            use_container_width=True,
+            key="llm_save_button",
+        )
+
+        if test_clicked:
+            with st.spinner("正在连接…"):
+                ok, message = test_llm_connection(
+                    base_url=st.session_state.get("llm_base_url", config["base_url"]),
+                    api_key=st.session_state.get("llm_api_key", config["api_key"]),
+                    model=st.session_state.get("llm_model", config["model"]),
+                    timeout=int(st.session_state.get("llm_timeout", config["timeout"])),
+                )
+            st.session_state.llm_test_result = (ok, message)
+
+        if save_clicked:
+            saved = llm_settings.save({
+                "enabled": bool(st.session_state.get("llm_enabled", config["enabled"])),
+                "base_url": st.session_state.get("llm_base_url", config["base_url"]),
+                "model": st.session_state.get("llm_model", config["model"]),
+                "api_key": st.session_state.get("llm_api_key", config["api_key"]),
+                "timeout": st.session_state.get("llm_timeout", config["timeout"]),
+                "extra": st.session_state.get("llm_extra", config["extra"]),
+            })
+            if saved["enabled"]:
+                ok, reason = llm_settings.status(saved)
+                if ok:
+                    st.success(f"已保存，之后按「大模型解析 · {saved['model']}」解析。")
+                else:
+                    st.warning(f"已保存，但{reason}，下次解析会回退本地规则。")
+            else:
+                st.success("已保存，之后只用本地规则。")
+
+        result = st.session_state.get("llm_test_result")
+        if result:
+            ok, message = result
+            if ok:
+                st.success(message)
+            else:
+                st.error(f"失败：{message}")
+
+    with st.container(border=True):
+        st.markdown("**运行信息**")
+        effective = llm_settings.load()
+        ok, reason = llm_settings.status(effective)
+        if effective["enabled"]:
+            mode_text = f"大模型解析 · {effective['model']}" if ok else f"大模型已开启但{reason}（解析会回退本地规则）"
+        else:
+            mode_text = "本地规则（不联网）"
+        st.caption(f"解析方式：{mode_text}")
+        st.caption(f"配置文件：{llm_settings.settings_path()}")
+        st.caption(f"版本：{APP_VERSION} · 每次改动点「保存设置」才会写入磁盘。")
 
 
 active_step = guided_step()
@@ -1276,25 +1425,42 @@ if "guided_section" not in st.session_state:
     st.session_state.guided_section = "急救流程"
 section = st.segmented_control(
     "页面",
-    ["急救流程", "我的任务"],
+    ["急救流程", "我的任务", "设置"],
     key="guided_section",
     label_visibility="collapsed",
     width="stretch",
 )
 LOCAL_PACKAGE_PATH = Path(__file__).resolve().parents[1] / "downloads" / "DDL-guided-oneclick-v2-20261122.zip"
-if LOCAL_PACKAGE_PATH.exists():
-    st.download_button(
-        "想要更流畅？下载 PC 一键部署包",
-        data=LOCAL_PACKAGE_PATH.read_bytes(),
-        file_name="DDL-guided-oneclick-v2-20261122.zip",
-        mime="application/zip",
-        use_container_width=True,
-        key="local_deploy_download",
-    )
-    st.caption("下载后解压，双击“一键部署.bat”。完成后桌面会生成 DDL急救站 快捷方式，包内也可双击“启动.bat”重新打开。")
+APK_PACKAGE_PATH = Path(__file__).resolve().parents[1] / "downloads" / "DDL-rescue-v1.2.0-android.apk"
+download_cols = st.columns(2)
+with download_cols[0]:
+    if LOCAL_PACKAGE_PATH.exists():
+        st.download_button(
+            "下载 PC 一键部署包",
+            data=LOCAL_PACKAGE_PATH.read_bytes(),
+            file_name="DDL-guided-oneclick-v2-20261122.zip",
+            mime="application/zip",
+            use_container_width=True,
+            key="local_deploy_download",
+        )
+with download_cols[1]:
+    if APK_PACKAGE_PATH.exists():
+        st.download_button(
+            "下载 Android APK",
+            data=APK_PACKAGE_PATH.read_bytes(),
+            file_name="DDL-rescue-v1.2.0-android.apk",
+            mime="application/vnd.android.package-archive",
+            use_container_width=True,
+            key="android_apk_download",
+        )
+st.caption("PC 包下载后解压，双击“一键部署.bat”；APK 可直接传到安卓手机安装。")
 def switch_to_my_tasks() -> None:
     st.session_state.guided_section = "我的任务"
 
+
+if section == "设置":
+    render_settings()
+    st.stop()
 
 if section == "我的任务":
     st.markdown('<div class="simple-kicker">我的任务</div><div class="simple-question">先做什么，由你决定</div><div class="simple-note">保存过的 DDL 都在下面；拖动排序后，今日主攻和计划顺序会一起更新。</div>', unsafe_allow_html=True)
@@ -1335,18 +1501,15 @@ if active_step == 1:
     if st.session_state.pop("guided_demo_requested", False):
         run_parse(st.session_state.get("notice_text", ""), reset_statuses=True)
 
-    with st.expander("高级设置：真实模型（通常不用改）"):
-        st.selectbox(
-            "解析方式",
-            ["mock", "real"],
-            format_func=lambda x: "模拟解析（推荐演示）" if x == "mock" else "真实模型",
-            key="provider_mode",
-        )
-        if st.session_state.get("provider_mode") == "real":
-            st.text_input("接口地址", value=provider_defaults["base_url"], key="llm_base_url")
-            st.text_input("模型名称", value=provider_defaults["model"], key="llm_model")
-            st.text_input("API Key", value=provider_defaults["api_key"], type="password", key="llm_api_key")
-            st.caption("调用失败会自动回退模拟解析，不会卡住流程。")
+    step1_config = llm_settings.load()
+    step1_ready, step1_reason = llm_settings.status(step1_config)
+    if step1_config["enabled"] and step1_ready:
+        parse_hint = f"解析方式：大模型 · {step1_config['model']}"
+    elif step1_config["enabled"]:
+        parse_hint = f"解析方式：大模型（{step1_reason}，这次会回退本地规则）"
+    else:
+        parse_hint = "解析方式：本地规则 · 不联网"
+    st.caption(f"{parse_hint} · 想换的话去「设置」")
 
 elif active_step == 2:
     parsed = st.session_state.parsed
@@ -1379,6 +1542,60 @@ elif active_step == 2:
 
     if parsed.get("risks"):
         st.warning("有些信息需要人工确认：" + "；".join(str(risk.get("message") or "") for risk in parsed["risks"] if isinstance(risk, dict)))
+
+    provider_label = str(st.session_state.get("provider_label") or "")
+    if provider_label:
+        st.caption(f"解析方式：{provider_label}" + (f" · {st.session_state.get('fallback_reason')}" if st.session_state.get("fallback_reason") else ""))
+
+    unconfirmed = [item for item in items if not item_deadline_iso(item)]
+    if unconfirmed:
+        st.warning(f"有 {len(unconfirmed)} 个截止任务还没确认时间。选好日期和时间，就能生成计划。")
+        with st.container(border=True):
+            st.markdown("**确认截止时间** 　日历选日期，时间精确到分钟")
+            picks: dict[str, tuple[str, date, time]] = {}
+            for index, item in enumerate(unconfirmed):
+                ddl_key = str(item.get("id") or f"DDL{index + 1}")
+                item_title = str(item.get("title") or "作业任务")
+                st.markdown(f"· {item_title}")
+                col_date, col_time = st.columns(2)
+                picked_date = col_date.date_input(
+                    "截止日期",
+                    value=date.today(),
+                    key=f"confirm_date_{index}_{ddl_key}",
+                )
+                picked_time = col_time.time_input(
+                    "截止时间",
+                    value=time(23, 59),
+                    step=60,
+                    key=f"confirm_time_{index}_{ddl_key}",
+                )
+                picks[ddl_key] = (item_title, picked_date, picked_time)
+            if st.button("确认这些截止时间", type="primary", use_container_width=True, key="confirm_deadlines"):
+                next_parsed = parsed
+                failed = False
+                for ddl_key, (item_title, picked_date, picked_time) in picks.items():
+                    if picked_date is None:
+                        st.error(f"「{item_title}」还没选日期。")
+                        failed = True
+                        continue
+                    deadline_at = datetime.combine(picked_date, picked_time or time(23, 59)).replace(tzinfo=APP_TIMEZONE)
+                    if deadline_at <= datetime.now(APP_TIMEZONE):
+                        st.error(f"「{item_title}」的时间已经过去了，换一个。")
+                        failed = True
+                        continue
+                    next_parsed = apply_manual_deadline(
+                        next_parsed,
+                        deadline_at,
+                        ddl_key if next_parsed.get("ddl_items") else "",
+                    )
+                if not failed:
+                    st.session_state.parsed = next_parsed
+                    save_parsed_notice(
+                        next_parsed,
+                        st.session_state.get("notice_text", next_parsed.get("raw_text", "")),
+                    )
+                    st.toast("截止时间已确认，可以生成计划了")
+                    st.rerun()
 
     st.markdown('<div class="task-list-title">任务列表</div><div class="task-list-hint">按你的真实优先级排列所有任务。按住卡片上下拖动，越靠上越先做。</div>', unsafe_allow_html=True)
     task_labels: list[str] = []
@@ -1441,17 +1658,18 @@ elif active_step == 2:
                     value=str(edit_item.get("title") or "作业任务"),
                     key=f"guided_ddl_title_{ddl_index}",
                 )
-                current_iso = edit_item.get("deadline_iso") or (edit_item.get("deadline") or {}).get("normalized")
-                current_deadline = ""
-                if current_iso:
-                    try:
-                        current_deadline = datetime.fromisoformat(str(current_iso)).strftime("%Y-%m-%d %H:%M")
-                    except ValueError:
-                        current_deadline = str(current_iso)
-                edit_item["_edit_deadline"] = st.text_input(
-                    "截止时间（YYYY-MM-DD HH:MM）",
-                    value=current_deadline,
-                    key=f"guided_ddl_deadline_{ddl_index}",
+                current_dt = dt_from_iso(item_deadline_iso(edit_item))
+                col_date, col_time = st.columns(2)
+                edit_item["_edit_date"] = col_date.date_input(
+                    "截止日期",
+                    value=current_dt.date() if current_dt else date.today(),
+                    key=f"guided_ddl_date_{ddl_index}",
+                )
+                edit_item["_edit_time"] = col_time.time_input(
+                    "截止时间（精确到分钟）",
+                    value=current_dt.time().replace(second=0, microsecond=0) if current_dt else time(23, 59),
+                    step=60,
+                    key=f"guided_ddl_time_{ddl_index}",
                 )
                 edit_tasks = edit_item.get("tasks") or []
                 for task_index, edit_task in enumerate(edit_tasks):
@@ -1486,14 +1704,23 @@ elif active_step == 2:
             valid = True
             valid_items = []
             for edit_item in edited_items:
-                deadline_text = str(edit_item.pop("_edit_deadline", "") or "").strip()
-                iso = deadline_to_iso(deadline_text)
-                if not iso:
-                    st.error(f"“{edit_item.get('title') or '任务'}”的截止时间格式不对，请用 YYYY-MM-DD HH:MM。")
+                picked_date = edit_item.pop("_edit_date", None)
+                picked_time = edit_item.pop("_edit_time", None)
+                if picked_date is None:
+                    st.error(f"“{edit_item.get('title') or '任务'}”还没选截止日期。")
                     valid = False
                     continue
+                deadline_at = datetime.combine(picked_date, picked_time or time(23, 59)).replace(tzinfo=APP_TIMEZONE)
+                iso = deadline_at.isoformat()
                 edit_item["deadline_iso"] = iso
-                edit_item["deadline"] = {"normalized": iso, "raw": deadline_text, "confidence": 1.0, "source_span": deadline_text}
+                edit_item["deadline"] = {
+                    "normalized": iso,
+                    "raw": deadline_at.strftime("%Y-%m-%d %H:%M"),
+                    "confidence": 1.0,
+                    "source_span": "手动确认",
+                }
+                edit_item["deadline_source"] = "手动确认"
+                edit_item["deadline_basis"] = "manual"
                 for edit_task in edit_item.get("tasks") or []:
                     if not isinstance(edit_task, dict):
                         continue
@@ -1518,6 +1745,11 @@ elif active_step == 2:
                 else:
                     parsed["deadline"] = "待确认"
                 parsed["schedule_ready"] = bool(parsed["deadline_iso"])
+                parsed["risks"] = [
+                    risk for risk in (parsed.get("risks") or [])
+                    if not (isinstance(risk, dict) and risk.get("field") == "deadline")
+                ]
+                parsed["deadline_candidates"] = []
                 st.session_state.parsed = parsed
                 save_parsed_notice(parsed, st.session_state.get("notice_text", parsed.get("raw_text", "")))
                 st.toast("识别结果已更新")
@@ -1549,6 +1781,8 @@ elif active_step == 2:
     )
     st.session_state.available_minutes = available_minutes
 
+    plan_ready = bool(parsed.get("deadline_iso")) and parsed.get("schedule_ready") is not False
+
     col_back, col_plan = st.columns([1, 2])
     with col_back:
         if st.button("重新粘贴", use_container_width=True):
@@ -1556,7 +1790,13 @@ elif active_step == 2:
             st.session_state.plan = None
             st.rerun()
     with col_plan:
-        if st.button("生成今日行动计划", type="primary", use_container_width=True):
+        if st.button(
+            "生成今日行动计划",
+            type="primary",
+            use_container_width=True,
+            disabled=not plan_ready,
+            key="guided_make_plan",
+        ):
             drag_order = st.session_state.get("guided_drag_order") or []
             for order, label in enumerate(drag_order):
                 pair = task_by_label.get(label)
@@ -1575,6 +1815,8 @@ elif active_step == 2:
             st.session_state.start_bonus_awarded = False
             st.session_state.remaining_minutes = max(5, min(240, int(st.session_state.plan.get("today_minutes", 30)) // 2))
             st.rerun()
+    if not plan_ready:
+        st.caption("先在上面确认截止时间，才能排期。")
 
     with st.expander("识别不对？查看原文和风险"):
         st.text_area("原文", value=st.session_state.get("notice_text", ""), height=150, disabled=True)
@@ -1633,8 +1875,11 @@ else:
             unsafe_allow_html=True,
         )
     else:
+        deadline_copy = str(parsed.get("deadline") or "待确认")
+        if parsed.get("deadline_basis") == "manual":
+            deadline_copy += "（手动确认）"
         st.markdown(
-            f'<div class="simple-focus"><span class="badge">今日最小交付</span><h2>{html.escape(level["deliverable"])}</h2><p>预计 {level["minutes"]} 分钟 · 截止 {html.escape(str(parsed.get("deadline") or "待确认"))}</p></div>',
+            f'<div class="simple-focus"><span class="badge">今日最小交付</span><h2>{html.escape(level["deliverable"])}</h2><p>预计 {level["minutes"]} 分钟 · 截止 {html.escape(deadline_copy)}</p></div>',
             unsafe_allow_html=True,
         )
 

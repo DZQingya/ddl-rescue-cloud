@@ -1,2 +1,2 @@
-v0.8.9-desktop-shortcut
+v0.9.1-sync-apk
 

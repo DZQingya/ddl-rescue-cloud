@@ -357,12 +357,13 @@ def _task_tag_for_title(title: str) -> str:
 
 
 def _task_minutes_for_title(title: str) -> int:
-    if any(word in title for word in ("检查", "导出")):
+    # 「写完实验报告并导出 PDF」这类要按写作算，不能因为含「导出」就当成 15 分钟的收尾动作。
+    if any(word in title for word in ("撰写", "写完", "写作", "PPT", "制作")):
+        return 35
+    if any(word in title for word in ("检查", "导出", "提交", "核对")):
         return 15
     if "自测" in title:
         return 20
-    if any(word in title for word in ("撰写", "PPT", "制作")):
-        return 35
     return 30
 
 
@@ -441,6 +442,46 @@ def _extract_multi_ddl_items(text: str) -> list[dict[str, Any]]:
     return items if len(items) >= 2 else []
 
 
+def build_ddl_item(
+    title: str,
+    deadline_at: datetime,
+    task_titles: list[str] | None = None,
+    *,
+    deliverables: list[str] | None = None,
+    materials: list[str] | None = None,
+    source: str = "手动确认",
+    basis: str = "model",
+    ddl_id: str = "DDL1",
+) -> dict[str, Any]:
+    """构造一个与规则引擎同构的 DDL 项（大模型解析、手动确认都用它）。
+
+    ``task_titles`` 为空时只放一个「完成{title}」的任务，保证排期能拿到工时。
+    """
+    clean_title = str(title or "").strip() or "作业任务"
+    deadline_data = _deadline_record(deadline_at, source, basis)
+    titles = [str(item).strip() for item in (task_titles or []) if str(item).strip()]
+    if not titles:
+        titles = [f"完成{clean_title}"]
+    tasks = [
+        _make_multi_ddl_task(task_title, ddl_id, index, deadline_data, _task_tag_for_title(clean_title))
+        for index, task_title in enumerate(titles, start=1)
+    ]
+    return {
+        "id": ddl_id,
+        "title": clean_title,
+        "deadline": deadline_data,
+        "deadline_iso": deadline_at.isoformat(),
+        "deadline_source": source,
+        "deadline_basis": basis,
+        "deliverables": deliverables or [clean_title],
+        "materials": materials or [],
+        "risks": [],
+        "tasks": tasks,
+        "confidence": deadline_data["confidence"],
+        "source_span": "",
+    }
+
+
 def parse_notice(text: str) -> dict[str, Any]:
     """Rule-based extraction with date semantics, ambiguity flags and a gate."""
     text = text.strip()
@@ -486,12 +527,13 @@ def parse_notice(text: str) -> dict[str, Any]:
             message = "原文日期无法识别（可能不是有效日期），需要确认具体截止时间。"
         else:
             message = "原文没有明确日期，需要确认具体截止时间。"
-        risks.append({"type": "ambiguity", "message": message, "severity": "high"})
+        risks.append({"type": "ambiguity", "field": "deadline", "message": message, "severity": "high"})
         blocking += 1
     if info["conflict"]:
         risks.append(
             {
                 "type": "conflict",
+                "field": "deadline",
                 "message": "「本周」与「下周」的时间口径互相矛盾，需确认按哪一周执行。",
                 "severity": "high",
             }
@@ -501,6 +543,7 @@ def parse_notice(text: str) -> dict[str, Any]:
         risks.append(
             {
                 "type": "ambiguity",
+                "field": "deadline",
                 "message": "相对时间存在两种口语理解（本周/下周），已按自然周取值，需要确认。",
                 "severity": "medium",
             }
@@ -509,6 +552,7 @@ def parse_notice(text: str) -> dict[str, Any]:
         risks.append(
             {
                 "type": "ambiguity",
+                "field": "other",
                 "message": "有要求「另行通知」，当前无法确定具体时间/方式/尺寸，需要追问。",
                 "severity": "high",
             }
@@ -518,6 +562,7 @@ def parse_notice(text: str) -> dict[str, Any]:
         risks.append(
             {
                 "type": "ambiguity",
+                "field": "other",
                 "message": "格式/具体要求未给出，提交前需要向老师或课代表确认。",
                 "severity": "high",
             }
@@ -527,6 +572,7 @@ def parse_notice(text: str) -> dict[str, Any]:
         risks.append(
             {
                 "type": "ambiguity",
+                "field": "deadline",
                 "message": "「尽快」是模糊时限，建议尽快确认一个具体日期。",
                 "severity": "medium",
             }
@@ -540,6 +586,7 @@ def parse_notice(text: str) -> dict[str, Any]:
         risks.append(
             {
                 "type": "conflict",
+                "field": "other",
                 "message": (
                     "同一天还存在未绑定独立截止时间的交付物："
                     + "、".join(extra_deliverables)
@@ -553,6 +600,7 @@ def parse_notice(text: str) -> dict[str, Any]:
         risks.append(
             {
                 "type": "conflict",
+                "field": "other",
                 "message": (
                     "多个 DDL 落在同一截止时刻，需要确认是否能同时完成。"
                     if same_deadline_collision
