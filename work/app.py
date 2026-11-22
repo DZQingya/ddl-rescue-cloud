@@ -433,8 +433,8 @@ def normalize_plan(plan: dict) -> dict:
 
 
 STATUS_META = {
-    "pending": ("待排期", "pill-muted"),
-    "reopened": ("待排期", "pill-muted"),
+    "pending": ("接下来", "pill-muted"),
+    "reopened": ("接下来", "pill-muted"),
     "primary": ("今日主攻", "pill-primary"),
     "active": ("进行中", "pill-warn"),
     "done": ("已完成", "pill-done"),
@@ -582,10 +582,18 @@ def _sync_notice_status(record_id: str) -> None:
         update_status(record_id, "pending")
 
 
+def _ddl_reward_points(record: dict, ddl_id: str) -> int:
+    for item in (record.get("parsed") or {}).get("ddl_items") or []:
+        if isinstance(item, dict) and str(item.get("id") or "") == str(ddl_id):
+            return {"保底": 20, "进阶": 40, "挑战": 60}.get(str(item.get("target_level") or "保底"), 20)
+    return 20
+
+
 def _apply_ddl_status(record: dict, ddl_id: str, status: str, has_ddl_row: bool) -> None:
     if status == "done":
+        points = _ddl_reward_points(record, ddl_id)
         grant_reward(
-            20,
+            points,
             f"workspace:{record['id']}:{ddl_id}",
             reason="完成任务",
             celebrate=True,
@@ -692,6 +700,21 @@ def _next_step_message(cards: list[dict], plan_stale: bool = False) -> str:
         return "下一步：所有 DDL 已完成，可以查看成果或删除旧通知。"
     return "下一步：查看卡住的 DDL，重新打开或重新生成计划。"
 
+def load_record_for_edit(record_id: str) -> None:
+    record = next((item for item in list_notices() if item.get("id") == record_id), None)
+    if not record:
+        return
+    st.session_state.notice_text = record.get("raw_text") or record.get("parsed", {}).get("raw_text") or ""
+    st.session_state.parsed = deepcopy(record.get("parsed") or {})
+    st.session_state.plan = None
+    st.session_state.started = False
+    st.session_state.completed = False
+    st.session_state.stuck = False
+    st.session_state.replan = None
+    st.session_state.current_record_id = record["id"]
+    st.session_state.guided_section = "急救流程"
+
+
 def render_workspace(draggable: bool = False) -> None:
     records = list_notices()
     if not records:
@@ -726,9 +749,8 @@ def render_workspace(draggable: bool = False) -> None:
             title = str(card["item"].get("title") or "未命名任务")
             deadline = _format_ddl_deadline(card["item"])
             status_label = STATUS_META.get(card["display_status"], STATUS_META["pending"])[0]
-            task_titles = "、".join(str(task.get("title", "任务")) for task in card["item"].get("tasks", []) or []) or "等待确认任务"
             source_title = str(card["record"].get("title") or "未命名通知")
-            base = f"{title}\n截止：{deadline}\n状态：{status_label}\n来源：{source_title}\n动作：{task_titles}"
+            base = f"{title}\n截止：{deadline}\n状态：{status_label}\n来源：{source_title}"
             count = counts.get(base, 0) + 1
             counts[base] = count
             label = base if count == 1 else f"{base}\n记录：{card['record']['id']}:{card['ddl_id']}"
@@ -817,9 +839,10 @@ def render_workspace(draggable: bool = False) -> None:
             st.warning("工作台状态已变化，当前计划已过期。请点击上方“生成全工作台今日计划”重新生成。")
         m1, m2, m3 = st.columns(3)
         metric_prefix = "旧计划 · " if st.session_state.get("workspace_plan_stale") else ""
+        m1, m2 = st.columns(2)
         m1.metric(f"{metric_prefix}汇总 DDL", len(workspace_aggregated.get("ddl_items", [])))
         m2.metric(f"{metric_prefix}总任务时长", f"{workspace_plan.get('required_minutes', 0)} 分钟")
-        m3.metric(f"{metric_prefix}今日主攻", workspace_plan.get("today_deliverable", "待确认"))
+        st.markdown(f"**{metric_prefix}今日主攻：{html.escape(str(workspace_plan.get('today_deliverable', '待确认')))}**")
         if workspace_plan.get("plan_days"):
             for day in workspace_plan["plan_days"][:2]:
                 titles = "、".join(str(task.get("title", "任务")) for task in day.get("tasks", []))
@@ -840,19 +863,28 @@ def render_workspace(draggable: bool = False) -> None:
             if display_status == "primary" else ""
         )
         suffix = record["id"] if card["card_count"] == 1 else f"{record['id']}_{ddl_id}"
-        st.markdown(f"**{html.escape(str(item.get('title') or '未命名 DDL'))}** · {html.escape(status_label)} · 截止 {html.escape(_format_ddl_deadline(item))} · 完成 +20 分")
+        reward_points = _ddl_reward_points(record, ddl_id)
+        st.markdown(f"**{html.escape(str(item.get('title') or '未命名 DDL'))}** · {html.escape(status_label)} · 截止 {html.escape(_format_ddl_deadline(item))} · 完成 +{reward_points} 分")
+        current_target = str(item.get("target_level") or "保底")
+        target_level = st.selectbox(
+            "目标强度",
+            ["保底", "进阶", "挑战"],
+            index=["保底", "进阶", "挑战"].index(current_target) if current_target in ["保底", "进阶", "挑战"] else 0,
+            key=f"workspace_level_{suffix}",
+            help="保底 +20、进阶 +40、挑战 +60。",
+        )
+        if target_level != current_target:
+            item["target_level"] = target_level
+            save_notice(record.get("parsed") or {}, raw_text=record.get("raw_text"), record_id=record["id"])
         load_col, start_col, complete_col, stuck_col = st.columns([1.2, 1.0, 1.0, 1.0])
         with load_col:
-            if st.button("载入编辑", key=f"workspace_load_{suffix}", use_container_width=True):
-                st.session_state.notice_text = record.get("raw_text") or record.get("parsed", {}).get("raw_text") or ""
-                st.session_state.parsed = deepcopy(record.get("parsed") or {})
-                st.session_state.plan = None
-                st.session_state.started = False
-                st.session_state.completed = False
-                st.session_state.stuck = False
-                st.session_state.replan = None
-                st.session_state.current_record_id = record["id"]
-                st.rerun()
+            st.button(
+                "载入编辑",
+                key=f"workspace_load_{suffix}",
+                use_container_width=True,
+                on_click=load_record_for_edit,
+                args=(record["id"],),
+            )
         with start_col:
             if status == "active":
                 if st.button("继续", key=f"workspace_continue_{suffix}", use_container_width=True):
