@@ -1,2 +1,2 @@
-v0.8.4-level-sync
+v0.8.5-local-entry
 

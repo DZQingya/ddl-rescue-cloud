@@ -1281,6 +1281,12 @@ section = st.segmented_control(
     label_visibility="collapsed",
     width="stretch",
 )
+st.link_button(
+    "想要更流畅？在你的 PC 本地部署",
+    "https://github.com/DZQingya/ddl-rescue-cloud/blob/main/LOCAL_DEPLOY.md",
+    use_container_width=True,
+)
+st.caption("本地运行没有云端排队，数据留在自己的电脑。")
 def switch_to_my_tasks() -> None:
     st.session_state.guided_section = "我的任务"
 
