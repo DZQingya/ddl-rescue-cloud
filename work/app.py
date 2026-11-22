@@ -41,6 +41,14 @@ APP_VERSION = "v0.7-guided"
 if st.session_state.get("app_version") != APP_VERSION:
     st.session_state.clear()
     st.session_state.app_version = APP_VERSION
+if "reward_xp" not in st.session_state:
+    st.session_state.reward_xp = 0
+if "reward_completed_count" not in st.session_state:
+    st.session_state.reward_completed_count = 0
+if "reward_streak" not in st.session_state:
+    st.session_state.reward_streak = 0
+if "last_reward_points" not in st.session_state:
+    st.session_state.last_reward_points = 0
 
 st.markdown(
     """
@@ -708,14 +716,17 @@ def render_workspace(draggable: bool = False) -> None:
         for card in cards:
             title = str(card["item"].get("title") or "未命名任务")
             deadline = _format_ddl_deadline(card["item"])
-            base = f"{title} ｜ {deadline}"
+            status_label = STATUS_META.get(card["display_status"], STATUS_META["pending"])[0]
+            task_titles = "、".join(str(task.get("title", "任务")) for task in card["item"].get("tasks", []) or []) or "等待确认任务"
+            source_title = str(card["record"].get("title") or "未命名通知")
+            base = f"{title}\n截止：{deadline}\n状态：{status_label}\n来源：{source_title}\n动作：{task_titles}"
             count = counts.get(base, 0) + 1
             counts[base] = count
-            label = base if count == 1 else f"{base} ｜ {card['record']['id']}:{card['ddl_id']}"
+            label = base if count == 1 else f"{base}\n记录：{card['record']['id']}:{card['ddl_id']}"
             labels.append(label)
             label_to_card[label] = card
 
-        st.markdown('<div class="task-list-title">拖动调整任务优先级</div><div class="task-list-hint">所有已保存 DDL 都在这里。越靠上越先做，拖动后今日主攻会同步变化。</div>', unsafe_allow_html=True)
+        st.markdown('<div class="task-list-title">拖动下方任务卡片调整优先级</div><div class="task-list-hint">卡片本身就是拖拽项。越靠上越先做，拖动后今日主攻和操作顺序会同步变化。</div>', unsafe_allow_html=True)
         sorted_labels = sort_items(
             labels,
             direction="vertical",
@@ -723,9 +734,9 @@ def render_workspace(draggable: bool = False) -> None:
             custom_style="""
             .sortable-component { border:0; padding:0; background:transparent; }
             .sortable-container, .sortable-container-body { background:transparent; padding:0; }
-            .sortable-item { background:#fff; border:1px solid #dbe4f0; border-radius:14px; padding:0 16px; margin:8px 0; min-height:56px; height:56px; display:flex; align-items:center; font-weight:800; color:#1e293b; cursor:grab; box-shadow:0 3px 12px rgba(15,23,42,.05); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; touch-action:none; user-select:none; }
+            .sortable-item { background:#fff; border:1px solid #dbe4f0; border-radius:18px; padding:14px 16px; margin:10px 0; min-height:166px; height:166px; display:block; font-weight:700; color:#1e293b; cursor:grab; box-shadow:0 4px 16px rgba(15,23,42,.06); white-space:pre-line; overflow:hidden; line-height:1.5; touch-action:none; user-select:none; }
             .sortable-item.active:not(.dragging) { opacity:.30; }
-            .sortable-item.dragging { cursor:grabbing; opacity:1; box-shadow:0 14px 32px rgba(15,23,42,.18); }
+            .sortable-item.dragging { cursor:grabbing; opacity:1; box-shadow:0 18px 38px rgba(15,23,42,.2); }
             """,
         )
         st.session_state.workspace_drag_order = [f"{label_to_card[label]['record']['id']}::{label_to_card[label]['ddl_id']}" for label in sorted_labels if label in label_to_card]
@@ -819,21 +830,8 @@ def render_workspace(draggable: bool = False) -> None:
             f'<span class="tag">DDL状态：{html.escape(underlying_label)}</span>'
             if display_status == "primary" else ""
         )
-        task_titles = "、".join(
-            str(task.get("title", "任务")) for task in item.get("tasks", []) or []
-        ) or "等待确认任务"
-        source_title = str(record.get("title") or "未命名通知")
         suffix = record["id"] if card["card_count"] == 1 else f"{record['id']}_{ddl_id}"
-        st.markdown(
-            f"""
-<div class="ddl-card">
-  <div class="ddl-card-head"><div><h4>{html.escape(str(item.get("title") or "未命名 DDL"))}</h4><p>截止：{html.escape(_format_ddl_deadline(item))}</p></div><span class="pill {status_class}">{status_label}</span></div>
-  <div class="tag-row"><span class="tag">所属通知共 {card["card_count"]} 个 DDL</span>{status_note}<span class="tag">来源：{html.escape(source_title)}</span></div>
-  <p>AI 拆出的动作：{html.escape(task_titles)}</p>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"**{html.escape(str(item.get('title') or '未命名 DDL'))}** · {html.escape(status_label)} · 截止 {html.escape(_format_ddl_deadline(item))}")
         load_col, start_col, complete_col, stuck_col = st.columns([1.2, 1.0, 1.0, 1.0])
         with load_col:
             if st.button("载入编辑", key=f"workspace_load_{suffix}", use_container_width=True):
@@ -948,6 +946,15 @@ st.markdown(
 .simple-focus .badge {background:rgba(255,255,255,.14); color:#bfdbfe;}
 .task-list-title {font-size:1.25rem; font-weight:900; color:#0f172a; margin:.35rem 0 .15rem;}
 .task-list-hint {font-size:.85rem; color:#64748b; margin-bottom:.4rem;}
+.reward-card {background:linear-gradient(135deg,#fff7ed,#eff6ff); border:1px solid #fde68a; border-radius:18px; padding:1rem 1.1rem; margin:.7rem 0 1rem;}
+.reward-title {font-size:.78rem; letter-spacing:.08em; color:#b45309; font-weight:900;}
+.reward-points {font-size:2rem; line-height:1.05; font-weight:900; color:#0f172a; margin:.3rem 0;}
+.reward-copy {font-size:.9rem; color:#475569; margin:.15rem 0;}
+.reward-pill {display:inline-block; padding:.28rem .6rem; border-radius:999px; background:#fff; border:1px solid #fcd34d; color:#92400e; font-size:.78rem; font-weight:800; margin-top:.45rem;}
+.reward-stat-row {display:flex; gap:.5rem; margin:.55rem 0 .25rem;}
+.reward-stat {flex:1; background:rgba(255,255,255,.8); border-radius:12px; padding:.55rem .6rem; text-align:center;}
+.reward-stat b {display:block; font-size:1.15rem; color:#0f172a;}
+.reward-stat span {font-size:.72rem; color:#64748b;}
 @media (max-width: 520px) {
   .block-container {padding-left:1rem; padding-right:1rem;}
   .simple-steps {gap:.3rem;}
@@ -968,6 +975,42 @@ def guided_step() -> int:
     if st.session_state.get("parsed"):
         return 2
     return 1
+
+
+def reward_badge(points: int) -> tuple[str, str]:
+    if points >= 160:
+        return "急救大师", "你已经把“先做一步”变成了稳定习惯。"
+    if points >= 80:
+        return "反拖延选手", "不是靠硬撑，而是一次次把任务收小、做完。"
+    if points >= 20:
+        return "今日启动者", "只要开始，今天就已经和昨天不一样。"
+    return "刚刚起步", "完成第一块，就会点亮今天的第一个奖励。"
+
+
+def render_reward_summary(compact: bool = False) -> None:
+    points = int(st.session_state.get("reward_xp", 0))
+    completed = int(st.session_state.get("reward_completed_count", 0))
+    streak = int(st.session_state.get("reward_streak", 0))
+    badge, copy = reward_badge(points)
+    card = (
+        '<div class="reward-card">'
+        '<div class="reward-title">今日正反馈</div>'
+        f'<div class="reward-points">{points} 分</div>'
+        f'<div class="reward-copy">{html.escape(copy)}</div>'
+        '<div class="reward-stat-row">'
+        f'<div class="reward-stat"><b>{completed}</b><span>完成任务</span></div>'
+        f'<div class="reward-stat"><b>{streak}</b><span>连续完成</span></div>'
+        f'<div class="reward-stat"><b>{html.escape(badge)}</b><span>当前徽章</span></div>'
+        '</div></div>'
+    )
+    st.markdown(card, unsafe_allow_html=True)
+    goals = [(40, "今日启动者"), (80, "反拖延选手"), (160, "急救大师")]
+    next_goal = next(((target, label) for target, label in goals if points < target), None)
+    if next_goal:
+        target, label = next_goal
+        st.progress(min(points / target, 1.0), text=f"距离「{label}」还差 {target - points} 分")
+    else:
+        st.caption("最高徽章已点亮。继续完成，记录不会清零。")
 
 
 def render_steps(active: int) -> None:
@@ -1066,6 +1109,7 @@ section = st.segmented_control(
 )
 if section == "我的任务":
     st.markdown('<div class="simple-kicker">我的任务</div><div class="simple-question">先做什么，由你决定</div><div class="simple-note">保存过的 DDL 都在下面；拖动排序后，今日主攻和计划顺序会一起更新。</div>', unsafe_allow_html=True)
+    render_reward_summary(compact=True)
     render_workspace(draggable=True)
     st.stop()
 
@@ -1337,6 +1381,7 @@ elif active_step == 2:
             st.session_state.completed = False
             st.session_state.stuck = False
             st.session_state.replan = None
+            st.session_state.start_bonus_awarded = False
             st.session_state.remaining_minutes = max(5, min(240, int(st.session_state.plan.get("today_minutes", 30)) // 2))
             st.rerun()
 
@@ -1358,8 +1403,21 @@ else:
     )
     level_key = {"保底": "minimum", "进阶": "standard", "挑战": "stretch"}[selected_label]
     level = plan["today_levels"][level_key]
+    reward_points = {"保底": 20, "进阶": 40, "挑战": 60}[selected_label]
+    current_points = int(st.session_state.get("reward_xp", 0))
+    current_badge = reward_badge(current_points)[0]
+    reward_copy = (
+        '<div class="reward-card">'
+        '<div class="reward-title">完成奖励</div>'
+        f'<div class="reward-points">+{reward_points} 分</div>'
+        f'<div class="reward-copy">先完成「{html.escape(selected_label)}」目标，积分马上到账。开始任务还会额外获得 2 分启动奖励。</div>'
+        f'<span class="reward-pill">当前 {current_points} 分 · {html.escape(current_badge)}</span>'
+        '</div>'
+    )
+    st.markdown(reward_copy, unsafe_allow_html=True)
     if st.session_state.completed:
-        st.success("今天这一块已经完成。完成比完美重要。")
+        st.success(f"今天这一块已经完成，+{int(st.session_state.get('last_reward_points', 0))} 分已到账。完成比完美重要。")
+        render_reward_summary()
         st.markdown(
             f'<div class="simple-focus"><span class="badge">已完成</span><h2>{html.escape(level["deliverable"])}</h2><p>预计 {level["minutes"]} 分钟</p></div>',
             unsafe_allow_html=True,
@@ -1377,13 +1435,21 @@ else:
     if not st.session_state.completed:
         c1, c2, c3 = st.columns(3)
         if c1.button("开始 / 继续", type="primary", use_container_width=True):
+            if not st.session_state.get("start_bonus_awarded", False):
+                st.session_state.reward_xp = int(st.session_state.get("reward_xp", 0)) + 2
+                st.session_state.start_bonus_awarded = True
+                st.toast("启动成功，+2 分")
             st.session_state.started = True
             st.session_state.stuck = False
             st.session_state.replan = None
             st.rerun()
-        if c2.button("我完成了", use_container_width=True):
+        if c2.button(f"完成了，领 +{reward_points} 分", use_container_width=True):
             st.session_state.completed = True
             st.session_state.stuck = False
+            st.session_state.reward_xp = int(st.session_state.get("reward_xp", 0)) + reward_points
+            st.session_state.reward_completed_count = int(st.session_state.get("reward_completed_count", 0)) + 1
+            st.session_state.reward_streak = int(st.session_state.get("reward_streak", 0)) + 1
+            st.session_state.last_reward_points = reward_points
             st.balloons()
             st.rerun()
         if c3.button("我卡住了", use_container_width=True):
