@@ -6,6 +6,5 @@ if not exist ".venv\Scripts\python.exe" (
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup_local.ps1"
   exit /b
 )
-powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 3; Start-Process 'http://localhost:8501'"
-".venv\Scripts\python.exe" -m streamlit run "work\app.py" --server.address 0.0.0.0 --server.port 8501 --server.headless true
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0launch_local.ps1"
 if errorlevel 1 pause

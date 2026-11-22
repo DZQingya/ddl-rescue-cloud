@@ -1,4 +1,4 @@
-﻿param([switch]$CheckOnly, [switch]$SetupOnly)
+﻿﻿param([switch]$CheckOnly, [switch]$SetupOnly)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -LiteralPath $root
@@ -73,9 +73,5 @@ if ($SetupOnly) {
     exit 0
 }
 
-$browserHelper = "Start-Sleep -Seconds 3; Start-Process 'http://localhost:8501'"
-Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -ArgumentList @("-NoProfile", "-Command", $browserHelper)
-
-Write-Host "启动本地服务，浏览器会自动打开..." -ForegroundColor Green
-Write-Host "关闭此窗口即停止服务；下次双击桌面快捷方式或启动.bat重新打开。" -ForegroundColor Gray
-& $venvPython -m streamlit run work\app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true
+Write-Host "启动本地服务..." -ForegroundColor Green
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root "launch_local.ps1")
