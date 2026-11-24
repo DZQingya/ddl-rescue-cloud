@@ -1,36 +1,51 @@
-# DDL 急救站 · v0.9.1 Cloud + APK
+# DDL 急救站 · v0.9.2
 
-组员 v0.9-sync-mobile 合并版，保留桌面快捷方式、一键部署、拖拽排序、积分奖励和任务级删除。
+DDL 急救站把“群通知、作业截止时间、可用时间、不知道先做什么”整理成一个今天能启动的行动计划。核心不是替用户代写作业，而是把模糊任务拆成最小交付、进阶目标和可执行步骤。
 
-## 功能
+## 核心能力
 
-- 三步急救：粘贴通知 → 生成计划 → 今天做；
-- 多 DDL 工作台与任务级状态；
-- 大卡片直接拖动排序；
-- 保底 / 进阶 / 挑战与积分奖励；
-- 删除单个任务，保留同通知其他任务；
-- LLM 设置页：DeepSeek / 通义千问 / 智谱 GLM / Kimi / OpenAI / 硅基流动 / Ollama / LM Studio；
-- 日历选时、手动确认截止时间；
-- PC 一键部署包与 Android APK 应用内下载。
+- 三步急救：粘贴通知 → 确认时间 → 生成今日计划；
+- 多 DDL 任务工作台，支持任务级状态、删除和重新打开；
+- 直接拖动任务卡调整优先级；
+- 保底 / 进阶 / 挑战三档强度，完成后获得积分反馈；
+- 大模型设置页：DeepSeek、通义千问、智谱 GLM、Kimi、OpenAI、硅基流动、Ollama、LM Studio；
+- 截止时间不清楚时用日历和时间控件手动确认；
+- PC 一键部署、桌面快捷方式和旧版 8501 进程自动接管；
+- Android APK 提供本地网页工作台，可离线使用规则模式，配置模型后可联网调用。
 
-## 运行
+## PC 一键部署
+
+解压 `DDL-guided-oneclick-v2-20261122.zip`，双击 `一键部署.bat`。
+
+首次部署会自动创建 `.venv`、安装依赖、建立桌面快捷方式并启动。以后可以直接双击桌面的“DDL急救站”，或包内 `启动.bat`。如果旧版仍占用 8501，启动脚本会先识别并停止旧 DDL 实例，避免打开旧界面。
+
+也可以手动运行：
 
 ```powershell
 python -m pip install -r requirements.txt
 python -m streamlit run work\app.py
 ```
 
-Windows 一键部署：解压 ZIP 后双击 `一键部署.bat`。首次部署会创建桌面快捷方式，包内可用 `启动.bat` 重新打开。
+## 大模型配置
 
-## 数据边界
-
-- 默认关闭大模型时纯本地规则，不联网；
-- 开启大模型后通知原文会发送到配置的模型服务；
-- `data/workspace.db` 和 `data/llm_settings.json` 属于本地运行数据，不进入 Git 仓库；
-- 云端与本地数据不会自动同步。
+默认关闭大模型时使用本地规则，不联网。开启大模型后，通知原文会发送到用户配置的模型服务。云端模型需要 API Key 和网络；Ollama / LM Studio 可在本机或局域网部署。
 
 ## 回归
 
 ```powershell
 python tests\test_sync_v09.py
 ```
+
+另外的 7 项 UI 核心回归覆盖积分、任务删除、卡住重置、强度同步和重新进入流程，详见 `FINAL_REPORT.md`。
+
+## 数据边界
+
+- `data/workspace.db` 和 `data/llm_settings.json` 是本地运行数据，不进入 Git；
+- 云端与本地数据不会自动同步；
+- 不登录学习通、不读取私人账号、不代交作业；
+- Android 包是 WebView 容器加本地网页资源，不是 React Native 原生界面。
+
+## 版本
+
+- PC / Web：`v0.9.2-auto-takeover`
+- Android APK：`v1.2.0`（versionCode 3，包名 `com.ddl.rescue`）

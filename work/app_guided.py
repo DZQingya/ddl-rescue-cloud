@@ -43,7 +43,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-APP_VERSION = "v0.9.1-sync-apk"
+APP_VERSION = "v0.9.2-auto-takeover"
 if st.session_state.get("app_version") != APP_VERSION:
     st.session_state.clear()
     st.session_state.app_version = APP_VERSION
