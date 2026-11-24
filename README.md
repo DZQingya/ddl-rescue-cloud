@@ -36,7 +36,7 @@ python -m streamlit run work\app.py
 python tests\test_sync_v09.py
 ```
 
-另外的 7 项 UI 核心回归覆盖积分、任务删除、卡住重置、强度同步和重新进入流程，详见 `FINAL_REPORT.md`。
+另外的 7 项 UI 核心回归覆盖积分、任务删除、卡住重置、强度同步和重新进入流程。
 
 ## 数据边界
 

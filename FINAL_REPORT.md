@@ -61,11 +61,11 @@ exit 0
 
 文件：`D:\Downloads\DDL-guided-oneclick-v2-20261122.zip`
 
-- 大小：131,597 字节
+- 大小：131,573 字节
 - ZIP 条目：34
 - 包含 `一键部署.bat`、`启动.bat`、`launch_local.ps1`、最终源码和测试
 - 禁止项检查：`workspace.db=0`、`llm_settings.json=0`、`.venv=0`、`.git=0`
-- SHA256：`43829AD50576736A4FA21D90D8F06D48CF2C3B0B71E40AED9AC017C1ADBD72AB`
+- SHA256：`5E66969B052A906FC416803DC42F41E600175035E42DE9A49CD97EF14C526AD3`
 
 ### Android APK
 
