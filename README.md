@@ -13,6 +13,13 @@ DDL 急救站把“群通知、作业截止时间、可用时间、不知道先�
 - PC 一键部署、桌面快捷方式和旧版 8501 进程自动接管；
 - Android APK 提供本地网页工作台，可离线使用规则模式，配置模型后可联网调用。
 
+## Android v1.3.0 更新
+
+- “卡住”改为全局弹层，在首页、计划页或任务页都能直接使用；
+- 多 DDL 任务可以只针对当前这一项缩小范围，不再影响同一通知里的其他任务；
+- 修复跨月日期选择，翻到其他月份后点选日期不会落错月份；
+- 优化手机端任务操作区，按钮支持换行，单项任务可直接“卡住了”；
+- 签名证书与 v1.2.0 一致，versionCode 从 3 升到 4，支持覆盖安装。
 ## PC 一键部署
 
 解压 `DDL-guided-oneclick-v2-20261122.zip`，双击 `一键部署.bat`。
@@ -48,4 +55,4 @@ python tests\test_sync_v09.py
 ## 版本
 
 - PC / Web：`v0.9.2-auto-takeover`
-- Android APK：`v1.2.0`（versionCode 3，包名 `com.ddl.rescue`）
+- Android APK：`v1.3.0`（versionCode 4，包名 `com.ddl.rescue`）

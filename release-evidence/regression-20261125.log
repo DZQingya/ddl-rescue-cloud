@@ -1,0 +1,139 @@
+DDL 急救站 v1.3.0 Android 更新回归 2026-11-25
+PC/Web：v0.9.2-auto-takeover
+Android：v1.3.0 / versionCode 4
+
+=== 发布包 v0.9 同步回归 ===
+2026-11-25 22:28:45.541 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-11-25 22:28:46.089 The widget with key "llm_base_url" was created with a default value but also had its value set via the Session State API.
+Stack (most recent call last):
+  File "C:\Users\hi\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1044, in _bootstrap
+    self._bootstrap_inner()
+  File "C:\Users\hi\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1082, in _bootstrap_inner
+    self._context.run(self.run)
+  File "C:\Users\hi\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1024, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\Downloads\DDL-cloud-deploy-20261122\.venv\Lib\site-packages\streamlit\testing\v1\local_script_runner.py", line 157, in _run_script_thread
+    super()._run_script_thread()
+  File "D:\Downloads\DDL-cloud-deploy-20261122\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 443, in _run_script_thread
+    self._run_script(request.rerun_data)
+  File "D:\Downloads\DDL-cloud-deploy-20261122\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 961, in _run_script
+    ) = exec_func_with_error_handling(code_to_exec, ctx)
+  File "D:\Downloads\DDL-cloud-deploy-20261122\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 136, in exec_func_with_error_handling
+    result = func()
+  File "D:\Downloads\DDL-cloud-deploy-20261122\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 936, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+  File "D:\Documents\Codex\2026-10-25\aigc-ddl-rescue\outputs\pc-oneclick-build-20261125-222706\DDL-guided-oneclick-v2-20261122\work\app.py", line 1462, in <module>
+    render_settings()
+  File "D:\Documents\Codex\2026-10-25\aigc-ddl-rescue\outputs\pc-oneclick-build-20261125-222706\DDL-guided-oneclick-v2-20261122\work\app.py", line 1228, in render_settings
+    col_url.text_input(
+  File "D:\Downloads\DDL-cloud-deploy-20261122\.venv\Lib\site-packages\streamlit\runtime\metrics_util.py", line 732, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
+  File "D:\Downloads\DDL-cloud-deploy-20261122\.venv\Lib\site-packages\streamlit\elements\widgets\text_widgets.py", line 728, in text_input
+    return self._text_input(
+  File "D:\Downloads\DDL-cloud-deploy-20261122\.venv\Lib\site-packages\streamlit\elements\widgets\text_widgets.py", line 791, in _text_input
+    check_widget_policies(
+  File "D:\Downloads\DDL-cloud-deploy-20261122\.venv\Lib\site-packages\streamlit\elements\lib\policies.py", line 146, in check_widget_policies
+    check_session_state_rules(
+  File "D:\Downloads\DDL-cloud-deploy-20261122\.venv\Lib\site-packages\streamlit\elements\lib\policies.py", line 90, in check_session_state_rules
+    _LOGGER.warning(
+2026-11-25 22:28:46.617 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-11-25 22:28:47.115 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+PASS 地址补全 /v1
+PASS 已有 /v1 不重复
+PASS 已写全不再加
+PASS 智谱 v4 路径
+PASS 识别局域网
+PASS 云端必须填 Key
+PASS 局域网免 Key
+PASS 报错翻译 401
+PASS 配置落盘
+PASS 读回一致
+PASS 超时被夹住
+PASS 预设数量  -> ['DeepSeek', '通义千问', '智谱 GLM', 'Kimi', 'OpenAI', '硅基流动', 'Ollama 本机', 'LM Studio']
+PASS 含 DeepSeek/通义/智谱
+PASS 预设能被识别
+PASS 自定义不匹配
+PASS 预设可用 · DeepSeek
+PASS 预设可用 · 通义千问
+PASS 预设可用 · 智谱 GLM
+PASS 预设可用 · Kimi
+PASS 预设可用 · OpenAI
+PASS 预设可用 · 硅基流动
+PASS 预设可用 · Ollama 本机
+PASS 预设可用 · LM Studio
+PASS ISO 带分钟
+PASS 空格分隔
+PASS 只有日期落到 23:59
+PASS null 字符串
+PASS 非法日期
+PASS 剥离代码围栏
+PASS 标签是大模型  -> 大模型解析 · mock-model
+PASS 无回退原因
+PASS 标题来自模型  -> 数学分析第 4 次作业
+PASS 截止时间解析  -> 2026-11-23 21:30
+PASS 可以直接排期
+PASS 模糊通知不排期
+PASS 标出日期风险
+PASS 保留格式风险
+PASS 模型提示可见
+PASS 阻断后置信度封顶
+PASS 多 DDL 两项  -> 2
+PASS 多 DDL 取最早
+PASS 每项都有任务
+PASS 写作类任务不是 15 分钟  -> 35
+PASS 失败回退本地规则
+PASS 回退原因可读  -> 大模型没走通（连不上这个地址，检查网络或地址是否写错），这次用本地规则。
+PASS 测试连接成功  -> 连上了 · mock-model · 0.0 秒 · 回复「OK」
+PASS 测试连接失败有原因  -> 连不上这个地址，检查网络或地址是否写错
+PASS 写入手动时间
+PASS 清掉日期风险
+PASS 保留其他风险
+PASS 手动后能排期
+PASS 只改指定项
+PASS 其他项不动
+PASS 整条取最早
+PASS 首页无异常  -> ElementList()
+PASS 设置页能打开
+PASS 预设按钮齐全  -> ['DeepSeek', 'OpenAI', '通义千问', '硅基流动', '智谱 GLM', 'Ollama 本机', 'Kimi', 'LM Studio']
+PASS 点预设填地址
+PASS 点预设填模型
+PASS 切预设生效
+PASS 界面测试连接  -> ['连上了 · mock-model · 0.0 秒 · 回复「OK」']
+PASS 界面保存配置
+PASS 大模型解析进第 2 步
+PASS 未确认时计划按钮禁用
+PASS 出现日历选时
+PASS 确认后可以排期
+PASS 记录为手动确认
+PASS 确认后时间正确  -> 2026-11-26 21:30
+PASS 生成计划成功
+PASS 明确时间不出现确认块
+PASS 明确时间计划按钮可用
+
+71/71 通过
+SYNC_EXIT=0
+
+=== 7 项核心 UI 回归（串行） ===
+--- test_rewards.py ---
+2026-11-25 22:28:50.842 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+GUIDED_TO_WORKSPACE_REWARD_PASS 22
+--- test_workspace_reward.py ---
+2026-11-25 22:28:52.571 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+WORKSPACE_COMPLETION_REWARD_PASS 20
+--- test_delete_task.py ---
+2026-11-25 22:28:53.805 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+DELETE_ONE_TASK_ONLY_PASS
+--- test_stuck_reset.py ---
+2026-11-25 22:28:55.136 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+STUCK_RESET_WITHOUT_WIDGET_ERROR_PASS
+--- test_workspace_edit_level.py ---
+2026-11-25 22:28:56.786 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+LOAD_EDIT_LEVEL_REWARD_PASS
+--- test_today_level_sync.py ---
+2026-11-25 22:28:58.530 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+TODAY_LEVEL_SYNC_PASS DDL1 40
+--- test_reentry_reset.py ---
+2026-11-25 22:29:00.232 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+REENTER_RESET_AND_REWARD_PASS
+CORE_7_EXIT=0
+FINAL_RESULT=PASS

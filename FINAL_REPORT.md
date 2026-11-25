@@ -1,23 +1,23 @@
-# DDL 急救站 · 最终交付报告
+# DDL 急救站 · 最终交付报告（Android v1.3.0 更新）
 
 - 发布版本：`v0.9.2-auto-takeover`
-- 日期：2026-11-24
+- 更新日期：2026-11-25
 - PC / Web 入口：`work/app.py`
 - 发布仓库：https://github.com/DZQingya/ddl-rescue-cloud
-- Android：`v1.2.0`（包名 `com.ddl.rescue`）
+- Android：`v1.3.0`（versionCode 4，包名 `com.ddl.rescue`）
 
-## 1. 本轮交付结论
+## 1. 本轮更新结论
 
-软件整合、版本冻结、PC 一键包、自动化回归和发布文档已完成。当前没有由自动化回归确认的阻断项。
+本次更新以 Android APK v1.3.0 为主，同时同步了下载入口、发布文档、PC 一键包引用和最终提交包。
 
-本轮新增并确认：
+Android v1.3.0 的新增与修复：
 
-- `work/app.py` 与 `work/app_guided.py` 的 `APP_VERSION` 已统一为 `v0.9.2-auto-takeover`；
-- 启动脚本可识别旧版 8501 实例并自动接管；
-- PC 一键包已按最终源码重建；
-- 包内不包含 `workspace.db`、`llm_settings.json`、`.venv` 或 `.git`；
-- 包内启动文件、源码、测试和大模型配置模块齐全；
-- 本地服务健康检查返回 `HTTP 200 / ok`。
+- “卡住”改为全局弹层，在首页、计划页和任务页都能打开；
+- 多 DDL 任务可以只针对当前这一项缩小范围，不会改动同一通知里的其他任务；
+- 修复跨月日期选择：翻到其他月份后点选的日期会同时保存正确的年月；
+- 手机端任务操作区支持换行，任务卡可直接进入“卡住了”；
+- APK 包名保持 `com.ddl.rescue`，versionCode 从 3 升到 4；
+- 签名 DER SHA256 与 v1.2.0 完全一致，属于同一签名证书，正常情况下可覆盖安装。
 
 ## 2. 自动化验证
 
@@ -47,13 +47,15 @@ exit 0
 6. “今天做”和目标强度双向同步；
 7. 重新进入流程后任务状态与奖励正确。
 
+本轮同时修掉了测试数据的日期硬编码，并把所有 Streamlit 交互统一为 30 秒超时，避免测试在日期滚动或机器变慢时误报。
+
 原始回归日志：
 
-`release-evidence\regression-20261124.log`
+`release-evidence\regression-20261125.log`
 
 日志 SHA256：
 
-`D41A00A376B5D0BD62BE74C244E24172B989EC39A7F0CE51FE4253FCA8BFF44A`
+`C959F42991D8B73908938C453C1B33FE217438B2F03254F7A72EC5166EC629A7`
 
 ## 3. 交付物校验
 
@@ -61,25 +63,27 @@ exit 0
 
 文件：`D:\Downloads\DDL-guided-oneclick-v2-20261122.zip`
 
-- 大小：131,573 字节
+- 大小：131,853 字节
 - ZIP 条目：34
 - 包含 `一键部署.bat`、`启动.bat`、`launch_local.ps1`、最终源码和测试
 - 禁止项检查：`workspace.db=0`、`llm_settings.json=0`、`.venv=0`、`.git=0`
-- SHA256：`5E66969B052A906FC416803DC42F41E600175035E42DE9A49CD97EF14C526AD3`
+- 源码中的 APK 下载引用：`DDL-rescue-v1.3.0-android.apk`
+- SHA256：`410E686308822D92DF358876E841C9FFC7AAEC7466BD6EAFE1DCC9993B2C7B89`
 
 ### Android APK
 
-文件：`D:\Downloads\DDL急救站-v1.2.0-android.apk`
+文件：`D:\Downloads\DDL急救站-v1.3.0-android.apk`
 
 - 包名：`com.ddl.rescue`
-- versionName：`1.2.0`
-- versionCode：`3`
+- versionName：`1.3.0`
+- versionCode：`4`
 - minSdk：`26`
 - targetSdk：`34`
 - INTERNET 权限：有
 - 签名 v2：有
-- 大小：74,347 字节
-- SHA256：`6321462CF33537C83BB291BA4E88B4D840A263641088A49C0FE5AAF70773745A`
+- 签名证书 DER SHA256：`331276C9A70A98177F7E1B48C03427779D5CDAFFBD2A7611DAD392FFFFEC8A64`
+- 大小：75,087 字节
+- SHA256：`CC1FB26BDFE45360F37506748E0D655DF208B080C9A365DDC3341E801B7CFF8C`
 
 APK 结构为 Android WebView + 本地网页资源，入口资源为 `assets/www/index.html`，不是 React Native 原生界面。
 
@@ -99,7 +103,7 @@ APK 结构为 Android WebView + 本地网页资源，入口资源为 `assets/www
 
 以下内容没有被自动化测试冒充为已验证：
 
-- 本轮完成了 APK 元数据、签名、权限、资源结构校验，但没有把它写成“实体安卓真机已验收”。真机安装、启动、返回键、键盘遮挡和弱网仍需由负责 APK 的组员在实体手机上完成最终冒烟；
+- 本轮完成了 APK 元数据、签名、权限、资源结构和同证书连续性校验，但没有把它写成“实体安卓真机已验收”；真机安装、启动、返回键、键盘遮挡和弱网仍需在实体手机上完成最终冒烟；
 - 71 项大模型测试使用 mock / 本地假服务，不证明所有真实服务商和全部网络环境下的准确率；
 - 云端与本地数据不会自动同步；
 - 应用不登录学习通、不读取私人账号、不代交作业；
@@ -118,6 +122,6 @@ cd D:\Downloads\DDL-cloud-deploy-20261122
 
 ## 7. 最终发布判定
 
-**自动化与打包判定：PASS。**
+**自动化、签名连续性和打包判定：PASS。**
 
-**发布前唯一外部动作：在实体安卓手机上安装 APK，完成一次真实打开和核心流程冒烟，并保留截图/录屏。**
+**发布前唯一外部动作：在实体安卓手机上安装 `D:\Downloads\DDL急救站-v1.3.0-android.apk`，完成一次真实打开和核心流程冒烟，并保留截图/录屏。**
