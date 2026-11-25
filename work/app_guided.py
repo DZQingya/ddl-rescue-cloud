@@ -1431,7 +1431,7 @@ section = st.segmented_control(
     width="stretch",
 )
 LOCAL_PACKAGE_PATH = Path(__file__).resolve().parents[1] / "downloads" / "DDL-guided-oneclick-v2-20261122.zip"
-APK_PACKAGE_PATH = Path(__file__).resolve().parents[1] / "downloads" / "DDL-rescue-v1.3.0-android.apk"
+APK_PACKAGE_PATH = Path(__file__).resolve().parents[1] / "downloads" / "DDL-rescue-v1.3.2-android.apk"
 download_cols = st.columns(2)
 with download_cols[0]:
     if LOCAL_PACKAGE_PATH.exists():
@@ -1448,7 +1448,7 @@ with download_cols[1]:
         st.download_button(
             "下载 Android APK",
             data=APK_PACKAGE_PATH.read_bytes(),
-            file_name="DDL-rescue-v1.3.0-android.apk",
+            file_name="DDL-rescue-v1.3.2-android.apk",
             mime="application/vnd.android.package-archive",
             use_container_width=True,
             key="android_apk_download",
